@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: #021e1f;
+    --foreground: #ffffff;
+    --card: #032f30;
+    --card-foreground: #ffffff;
+    --popover: #032f30;
+    --popover-foreground: #ffffff;
+    --primary: #FF6A00;
+    --primary-foreground: #ffffff;
+    --secondary: #8da3a4;
+    --secondary-foreground: #ffffff;
+    --muted: #8da3a4;
+    --muted-foreground: #B2C8C9;
+    --accent: #FF6A00;
+    --accent-foreground: #ffffff;
+    --destructive: #ef4444;
+    --destructive-foreground: #ffffff;
+    --border: #042a2b;
+    --input: #032f30;
+    --ring: #FF6A00;
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+    color: #f5f5f5 !important;
+  }
+  body {
+    @apply bg-background font-sans;
+    background: linear-gradient(135deg, #021e1f 0%, #032f30 50%, #042a2b 100%);
+    min-height: 100vh;
+    color: #f5f5f5 !important;
+  }
+}
+
+@layer components {
+  .theme-bg {
+    background: linear-gradient(135deg, #021e1f 0%, #032f30 50%, #042a2b 100%);
+  }
+  
+  .theme-card {
+    @apply bg-card border border-border rounded-lg shadow-lg;
+    background-color: #032f30;
+    border-color: #042a2b;
+  }
+  
+  .theme-button {
+    @apply bg-primary hover:bg-primary/90 text-primary-foreground;
+    background-color: #FF6A00;
+  }
+  
+  .theme-button:hover {
+    background-color: #E55A00;
+  }
+  
+  .theme-text-muted {
+    color: #8da3a4;
+  }
+  
+  .theme-text-body {
+    color: #B2C8C9;
+  }
+}
