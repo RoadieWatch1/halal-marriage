@@ -20,7 +20,7 @@ type Profile = {
   id: string;
   first_name: string | null;
   age: number | null;
-  // split fields
+  // split location fields
   city: string | null;
   state: string | null;
   // legacy combined (fallback only)
@@ -36,6 +36,8 @@ type Profile = {
   video: string | null;
   is_public: boolean | null;
   updated_at?: string | null;
+  // 🚦 needed for gender-based visibility
+  gender?: 'male' | 'female' | null;
 };
 
 interface Props {
@@ -46,15 +48,31 @@ interface Props {
 
 const ProfileView: React.FC<Props> = ({ userId, onBack, onConnect }) => {
   const [me, setMe] = useState<string | null>(null);
+  const [myGender, setMyGender] = useState<'' | 'male' | 'female'>('');
   const [p, setP] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Load viewer id + viewer gender
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setMe(data.user?.id ?? null));
+    (async () => {
+      const { data } = await supabase.auth.getUser();
+      const myId = data.user?.id ?? null;
+      setMe(myId);
+      if (myId) {
+        const { data: prof } = await supabase
+          .from('profiles')
+          .select('gender')
+          .eq('id', myId)
+          .maybeSingle<{ gender: 'male' | 'female' | null }>();
+        const g = (prof?.gender ?? '') as 'male' | 'female' | '';
+        setMyGender(g || '');
+      }
+    })();
   }, []);
 
+  // Load target profile
   useEffect(() => {
     let active = true;
     (async () => {
@@ -82,10 +100,11 @@ const ProfileView: React.FC<Props> = ({ userId, onBack, onConnect }) => {
               'video',
               'is_public',
               'updated_at',
+              'gender', // ✅ needed for gating
             ].join(', ')
           )
           .eq('id', userId)
-          .maybeSingle<Profile>(); // ✅ type the result
+          .maybeSingle<Profile>();
 
         if (error) throw error;
         if (!active) return;
@@ -94,7 +113,7 @@ const ProfileView: React.FC<Props> = ({ userId, onBack, onConnect }) => {
           setP(null);
           setError('Profile not found');
         } else {
-          setP(data); // ✅ no cast needed
+          setP(data);
         }
       } catch (e: any) {
         const msg = e?.message || 'Failed to load profile';
@@ -130,6 +149,10 @@ const ProfileView: React.FC<Props> = ({ userId, onBack, onConnect }) => {
   const locationDisplay =
     (p?.city || p?.state) ? [p?.city, p?.state].filter(Boolean).join(', ') : (p?.location || '—');
 
+  // 🚦 Gender gating
+  const sameGenderBlocked =
+    myGender && (myGender === 'male' || myGender === 'female') && p?.gender && myGender === p.gender;
+
   return (
     <div className="min-h-screen theme-bg p-4">
       <div className="max-w-4xl mx-auto space-y-4">
@@ -163,6 +186,28 @@ const ProfileView: React.FC<Props> = ({ userId, onBack, onConnect }) => {
             <CardContent className="p-6 text-red-300">{error}</CardContent>
           ) : !p ? (
             <CardContent className="p-6 theme-text-muted">Profile not found.</CardContent>
+          ) : myGender !== 'male' && myGender !== 'female' ? (
+            <CardContent className="p-6">
+              <h3 className="text-white font-semibold mb-2">Set your gender to view profiles</h3>
+              <p className="text-sm theme-text-muted mb-4">
+                Please edit your profile and set your <strong>Gender</strong> to continue.
+              </p>
+              <Button variant="secondary" onClick={onBack}>
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Back
+              </Button>
+            </CardContent>
+          ) : sameGenderBlocked ? (
+            <CardContent className="p-6">
+              <h3 className="text-white font-semibold mb-2">This profile isn’t visible</h3>
+              <p className="text-sm theme-text-muted mb-4">
+                For privacy reasons, users only see profiles of the opposite gender.
+              </p>
+              <Button variant="secondary" onClick={onBack}>
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Back to Search
+              </Button>
+            </CardContent>
           ) : (
             <>
               <CardHeader className="pb-0">

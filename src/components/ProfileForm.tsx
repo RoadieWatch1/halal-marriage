@@ -22,6 +22,8 @@ const MAX_PHOTOS = 10;
 const ProfileForm: React.FC<ProfileFormProps> = ({ onSave, initialData = {}, onBack }) => {
   const [profile, setProfile] = useState({
     firstName: initialData.firstName || '',
+    // ✅ Gender (required for opposite-gender matching)
+    gender: initialData.gender || '',
     age: initialData.age || '',
     // ✅ split location into city/state (fallback: parse initialData.location if provided)
     city:
@@ -52,6 +54,7 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ onSave, initialData = {}, onB
     setProfile((p) => ({
       ...p,
       firstName: initialData.firstName ?? p.firstName,
+      gender: initialData.gender ?? p.gender, // ✅ keep gender in sync
       age: initialData.age ?? p.age,
       city:
         initialData.city ??
@@ -133,7 +136,8 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ onSave, initialData = {}, onB
     const finalData = {
       ...profile,
       age: profile.age === '' ? '' : Number(profile.age),
-      location,        // legacy/combined
+      gender: profile.gender, // ✅ pass gender through
+      location,               // legacy/combined
       city: profile.city,
       state: profile.state,
     };
@@ -203,6 +207,23 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ onSave, initialData = {}, onB
                   onChange={(e) => setProfile({ ...profile, firstName: e.target.value })}
                   required
                 />
+              </div>
+
+              {/* ✅ Gender */}
+              <div>
+                <Label htmlFor="gender" className="text-white">Gender</Label>
+                <Select
+                  value={profile.gender}
+                  onValueChange={(value) => setProfile({ ...profile, gender: value })}
+                >
+                  <SelectTrigger id="gender">
+                    <SelectValue placeholder="Select gender" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="male">Male</SelectItem>
+                    <SelectItem value="female">Female</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div>

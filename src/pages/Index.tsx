@@ -21,11 +21,15 @@ type ProfileRow = {
   id: string;
   first_name?: string | null;
   age?: number | null;
+
   // ✅ split location fields
   city?: string | null;
   state?: string | null;
   // legacy combined (kept for fallback/compat)
   location?: string | null;
+
+  // ✅ gender
+  gender?: string | null;
 
   ethnicity?: string | null;
   occupation?: string | null;
@@ -66,10 +70,14 @@ const Index: React.FC = () => {
     return {
       firstName: row.first_name || '',
       age: row.age ?? '',
+
       // expose both styles to downstream components
       city,
       state,
       location: combinedLocation,
+
+      // ✅ gender surfaced to client state
+      gender: row.gender || '',
 
       ethnicity: row.ethnicity || '',
       occupation: row.occupation || '',
@@ -212,11 +220,15 @@ const Index: React.FC = () => {
       id: user.id,
       first_name: profileData.firstName || null,
       age: profileData.age ? Number(profileData.age) : null,
+
       // ✅ write split fields
       city: profileData.city || null,
       state: profileData.state || null,
       // keep legacy combined
       location: combinedLocation,
+
+      // ✅ persist gender
+      gender: profileData.gender || null,
 
       ethnicity: profileData.ethnicity || null,
       occupation: profileData.occupation || null,

@@ -32,6 +32,8 @@ type ProfileCard = {
   photos: string[] | null;
   is_public: boolean | null;
   updated_at?: string | null;
+  // we also filter by gender server-side; not needed for display, but fine to select
+  gender?: 'male' | 'female' | null;
 };
 
 type Filters = {
@@ -56,14 +58,28 @@ const SearchMatches: React.FC<SearchMatchesProps> = ({ onConnect, onBack, onView
   const [results, setResults] = useState<ProfileCard[]>([]);
   const [loading, setLoading] = useState(false);
   const [uid, setUid] = useState<string | null>(null);
+  const [myGender, setMyGender] = useState<'' | 'male' | 'female'>('');
   const [error, setError] = useState<string | null>(null);
 
   // pagination
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(false);
 
+  // Load auth user id, then load viewer's gender
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setUid(data.user?.id ?? null));
+    supabase.auth.getUser().then(async ({ data }) => {
+      const me = data.user?.id ?? null;
+      setUid(me);
+      if (me) {
+        const { data: prof } = await supabase
+          .from('profiles')
+          .select('gender')
+          .eq('id', me)
+          .maybeSingle();
+        const g = (prof?.gender ?? '') as 'male' | 'female' | '';
+        setMyGender(g || '');
+      }
+    });
   }, []);
 
   const hasAnyFilter = useMemo(
@@ -78,6 +94,14 @@ const SearchMatches: React.FC<SearchMatchesProps> = ({ onConnect, onBack, onView
 
   async function fetchMatches(opts?: { append?: boolean; pageOverride?: number }) {
     if (!uid) return;
+
+    // Only search once we know the viewer's gender; if not set, don't query yet.
+    if (myGender !== 'male' && myGender !== 'female') {
+      setResults([]);
+      setHasMore(false);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     if (!opts?.append) setResults([]);
@@ -103,16 +127,21 @@ const SearchMatches: React.FC<SearchMatchesProps> = ({ onConnect, onBack, onView
         'photos',
         'is_public',
         'updated_at',
+        'gender',
       ].join(', ');
 
+      // Start base query
       let query = supabase
         .from('profiles')
-        // 👇 Type the selection result as ProfileCard[]
-        .select<string, ProfileCard>(columns)
+        .select(columns)
         .eq('is_public', true)
         .neq('id', uid)
         .order('updated_at', { ascending: false })
         .range(from, to);
+
+      // ✅ Opposite-gender filter
+      const targetGender = myGender === 'male' ? 'female' : 'male';
+      query = query.eq('gender', targetGender);
 
       // Safe number parsing
       const min = filters.ageMin.trim() === '' ? undefined : Number(filters.ageMin);
@@ -126,7 +155,8 @@ const SearchMatches: React.FC<SearchMatchesProps> = ({ onConnect, onBack, onView
 
       if (filters.prayerStatus !== 'any') query = query.eq('prayer_status', filters.prayerStatus);
 
-      const { data, error } = await query;
+      // Type the response *after* building the query to avoid TS issues with .eq, .gte, etc.
+      const { data, error } = await query.returns<ProfileCard[]>();
       if (error) {
         setError(error.message || 'Failed to load matches');
         setHasMore(false);
@@ -144,13 +174,13 @@ const SearchMatches: React.FC<SearchMatchesProps> = ({ onConnect, onBack, onView
     }
   }
 
-  // initial load
+  // initial load and refetch when viewer gender becomes known
   useEffect(() => {
     if (!uid) return;
     setPage(0);
     fetchMatches({ append: false, pageOverride: 0 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [uid]);
+  }, [uid, myGender]);
 
   const applyFilters = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -163,6 +193,13 @@ const SearchMatches: React.FC<SearchMatchesProps> = ({ onConnect, onBack, onView
     setPage(next);
     fetchMatches({ append: true, pageOverride: next });
   };
+
+  const genderNotice =
+    myGender === 'male'
+      ? 'Showing women only (based on your gender).'
+      : myGender === 'female'
+      ? 'Showing men only (based on your gender).'
+      : '';
 
   return (
     <div className="min-h-screen theme-bg p-4">
@@ -180,6 +217,14 @@ const SearchMatches: React.FC<SearchMatchesProps> = ({ onConnect, onBack, onView
             <CardTitle className="text-white">Search Filters</CardTitle>
           </CardHeader>
           <CardContent>
+            {myGender !== 'male' && myGender !== 'female' ? (
+              <div className="mb-4 text-amber-300 text-sm">
+                Please set your <strong>Gender</strong> in your profile to see matches.
+              </div>
+            ) : genderNotice ? (
+              <div className="mb-4 text-emerald-300 text-sm">{genderNotice}</div>
+            ) : null}
+
             <form onSubmit={applyFilters}>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="md:col-span-1">
@@ -245,7 +290,7 @@ const SearchMatches: React.FC<SearchMatchesProps> = ({ onConnect, onBack, onView
                   {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
                   Apply Filters
                 </Button>
-                {hasAnyFilter && (
+                {(hasAnyFilter || myGender === '') && (
                   <Button
                     type="button"
                     variant="ghost"
@@ -287,7 +332,17 @@ const SearchMatches: React.FC<SearchMatchesProps> = ({ onConnect, onBack, onView
           </div>
         )}
 
-        {!error && !loading && results.length === 0 && (
+        {!error && !loading && myGender !== 'male' && myGender !== 'female' && (
+          <Card className="theme-card">
+            <CardContent className="text-center py-12">
+              <p className="theme-text-muted mb-2">
+                Set your <strong>Gender</strong> in your profile to find matches.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {!error && !loading && results.length === 0 && (myGender === 'male' || myGender === 'female') && (
           <Card className="theme-card">
             <CardContent className="text-center py-12">
               <p className="theme-text-muted mb-2">No matches found.</p>
@@ -302,7 +357,7 @@ const SearchMatches: React.FC<SearchMatchesProps> = ({ onConnect, onBack, onView
           </div>
         )}
 
-        <div className="grid grid-cols-1 md-grid-cols-2 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {results.map((m) => {
             const photo = m.photos?.[0] || '';
             const locationDisplay =
@@ -405,4 +460,3 @@ const SearchMatches: React.FC<SearchMatchesProps> = ({ onConnect, onBack, onView
 };
 
 export default SearchMatches;
-
