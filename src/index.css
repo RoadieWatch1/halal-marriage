@@ -2,206 +2,89 @@
 @tailwind components;
 @tailwind utilities;
 
-/* =========================
-   Base theme tokens
-   ========================= */
+/* ===== Base tokens (calm, minimal) ===== */
 @layer base {
   :root {
-    /* Brand palette */
-    --teal-600: #0d9488; /* primary */
+    --teal-600: #0d9488;
     --teal-700: #0f766e;
 
-    --gold-500: #d4af37; /* warm gold (still available for accents) */
-    --gold-600: #c99c1a;
-
     --ivory: #f8f7f2;
-    --ivory-70: rgba(248, 247, 242, 0.7);
-    --ivory-85: rgba(248, 247, 242, 0.85);
+    --ivory-70: rgba(248,247,242,.70);
 
-    --charcoal-900: #111827; /* background */
-    --charcoal-800: #1f2937; /* cards/popovers */
-    --charcoal-700: #374151; /* secondary/muted */
+    --charcoal-900: #111827; /* page bg */
+    --charcoal-850: #151f2a; /* subtle sweep */
+    --charcoal-800: #1f2937; /* cards */
 
-    /* shadcn variables */
     --background: var(--charcoal-900);
     --foreground: var(--ivory);
 
     --card: var(--charcoal-800);
     --card-foreground: var(--ivory);
 
-    --popover: var(--charcoal-800);
-    --popover-foreground: var(--ivory);
-
-    --primary: var(--teal-600);
-    --primary-foreground: var(--ivory);
-
-    --secondary: var(--charcoal-700);
-    --secondary-foreground: var(--ivory);
-
-    --muted: var(--charcoal-700);
-    --muted-foreground: #e5e7eb;
-
-    --accent: var(--gold-500);
-    --accent-foreground: var(--charcoal-900);
-
-    --destructive: #ef4444;
-    --destructive-foreground: var(--ivory);
-
-    --border: rgba(255, 255, 255, 0.08);
+    --border: rgba(255,255,255,.08);
     --input: var(--charcoal-800);
     --ring: var(--teal-600);
 
-    --radius: 0.75rem;
+    --radius: .75rem;
   }
 
   * { @apply border-border; }
 
-  /* Stronger/brighter headings: black + stronger teal glow */
-  h1, h2, h3, h4, h5, h6 {
-    color: #0a0a0a !important; /* keep titles black */
-    text-shadow:
-      0 8px 28px rgba(13,148,136,0.55),
-      0 3px 12px rgba(13,148,136,0.45),
-      0 1px 2px rgba(13,148,136,0.35);
-  }
-
-  /* Labels: neutral and readable */
-  label, .label, .form-label { color: var(--ivory) !important; }
-
   body {
     @apply bg-background text-foreground font-sans;
     background:
-      radial-gradient(1200px 600px at 10% 90%, rgba(13,148,136,.12), transparent 60%),
-      linear-gradient(135deg, #0e1a1a 0%, #0f2526 40%, var(--charcoal-900) 100%);
+      radial-gradient(1100px 500px at 15% 85%, rgba(13,148,136,.08), transparent 60%),
+      linear-gradient(135deg, var(--charcoal-850), var(--charcoal-900));
     min-height: 100vh;
   }
-
-  /* Global fix: any Tailwind "black" text utilities become ivory
-     (but headings above still stay black due to !important + specificity) */
-  :where(.text-black, .text-gray-900, .text-gray-800, .text-slate-900, .text-neutral-900) {
-    color: var(--ivory) !important;
-  }
 }
 
-/* =========================
-   Component-level helpers
-   ========================= */
+/* ===== Components ===== */
 @layer components {
-  /* App background section */
+  /* Sections */
   .theme-bg {
     background:
-      radial-gradient(1000px 500px at 85% 15%, rgba(13,148,136,.10), transparent 60%),
-      linear-gradient(135deg, #0e1a1a 0%, #0f2526 40%, var(--charcoal-900) 100%);
+      linear-gradient(135deg, var(--charcoal-850), var(--charcoal-900));
   }
 
-  /* Cards */
+  /* Glass card */
   .theme-card {
-    @apply rounded-lg shadow-lg border;
-    background: rgba(31, 41, 55, 0.6);
+    @apply rounded-xl border shadow-lg;
+    background: rgba(31,41,55,.55); /* charcoal-800 / 55% */
     border-color: var(--border);
     backdrop-filter: blur(8px);
-    color: var(--foreground); /* default text inside cards is ivory */
   }
 
-  /* Keep headings black inside cards too */
-  .theme-card :where(h1,h2,h3,h4,h5,h6) {
-    color: #0a0a0a !important;
-    text-shadow:
-      0 8px 28px rgba(13,148,136,0.55),
-      0 3px 12px rgba(13,148,136,0.45),
-      0 1px 2px rgba(13,148,136,0.35);
-  }
-
-  /* Primary buttons (teal) */
-  .theme-button {
-    @apply inline-flex items-center justify-center font-semibold rounded-xl px-4 py-2 transition;
+  /* Primary button (teal) */
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-xl px-6 py-3 font-semibold;
     color: var(--ivory);
     background: linear-gradient(180deg, var(--teal-600), var(--teal-700));
     border: 1px solid rgba(255,255,255,.08);
-    box-shadow:
-      0 10px 18px -10px rgba(13, 148, 136, 0.6),
-      inset 0 1px 0 0 rgba(255,255,255,.12);
+    transition: transform .15s ease, box-shadow .15s ease;
   }
-  .theme-button:hover {
-    transform: translateY(-1px);
-    box-shadow:
-      0 14px 22px -10px rgba(13, 148, 136, 0.75),
-      inset 0 1px 0 0 rgba(255,255,255,.2);
-  }
-  .theme-button:active { transform: translateY(0); }
+  .btn-primary:hover { transform: translateY(-1px); }
+  .btn-primary:active { transform: translateY(0); }
 
-  /* Text tones */
-  .theme-text-muted { color: var(--muted-foreground); }
-  .theme-text-body  { color: #f3f4f6; }
-
-  /* Utility accents */
-  .text-ivory   { color: var(--ivory); }
-  .bg-charcoal  { background-color: var(--charcoal-900); }
-}
-
-/* =========================
-   Hero & CTA helpers
-   ========================= */
-@layer components {
-  .hero-overlay {
-    background:
-      radial-gradient(1000px 500px at 80% 20%, rgba(13, 148, 136, 0.20), transparent 60%),
-      linear-gradient(to bottom, rgba(17, 24, 39, 0.65), rgba(17, 24, 39, 0.55) 40%, rgba(17, 24, 39, 0.75));
-  }
-
-  .btn-cta {
-    @apply inline-flex items-center justify-center rounded-xl px-6 py-3 text-base font-semibold transition-transform focus:outline-none;
-    color: var(--ivory);
-    background: linear-gradient(180deg, var(--teal-600), var(--teal-700));
-    border: 1px solid rgba(255,255,255,.08);
-    box-shadow:
-      0 10px 18px -10px rgba(13, 148, 136, 0.6),
-      inset 0 1px 0 0 rgba(255,255,255,.12);
-  }
-  .btn-cta:hover {
-    transform: translateY(-1px);
-    box-shadow:
-      0 14px 22px -10px rgba(13, 148, 136, 0.75),
-      inset 0 1px 0 0 rgba(255,255,255,.2);
-  }
-
+  /* Secondary (soft outline) */
   .btn-secondary {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: .75rem 1rem;
-    border-radius: .75rem;
-    font-weight: 600;
-    border: 1px solid rgba(255,255,255,.12);
+    @apply inline-flex items-center justify-center rounded-xl px-5 py-3 font-semibold;
     color: var(--ivory);
-    background: rgba(0,0,0,.25);
-    backdrop-filter: blur(6px);
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.10);
+    transition: transform .15s ease, border-color .15s ease;
     text-decoration: none;
-    transition: box-shadow .2s ease, transform .2s ease, border-color .2s ease;
   }
   .btn-secondary:hover {
-    border-color: rgba(255,255,255,.2);
     transform: translateY(-1px);
+    border-color: rgba(255,255,255,.18);
   }
 
-  .bullet { position: relative; padding-left: 1.25rem; }
-  .bullet::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 0.6rem;
-    width: 0.5rem;
-    height: 0.5rem;
-    border-radius: 9999px;
-    background: var(--teal-600);
-    box-shadow: 0 0 0 2px rgba(255,255,255,.15);
-  }
-}
+  /* Muted/body text helpers */
+  .theme-text-muted { color: var(--ivory-70); }
+  .theme-text-body  { color: #f3f4f6; }
 
-/* =========================
-   Inputs / Selects / Textareas
-   ========================= */
-@layer components {
+  /* Inputs / selects / textareas: ensure ivory text, clean focus */
   input[type="text"],
   input[type="email"],
   input[type="number"],
@@ -210,52 +93,42 @@
   input[type="url"],
   textarea,
   select {
-    color: var(--ivory) !important;           /* readable field text */
-    background-color: rgba(255,255,255,0.06); /* subtle panel */
+    color: var(--ivory) !important;
+    background-color: rgba(255,255,255,0.06);
     border: 1px solid var(--border);
+    min-height: 2.5rem; /* h-10 */
+    border-radius: var(--radius);
   }
-  input::placeholder,
-  textarea::placeholder {
-    color: var(--ivory-70);
-  }
-  input:focus,
-  textarea:focus,
-  select:focus {
+  input::placeholder, textarea::placeholder { color: var(--ivory-70); }
+
+  input:focus, textarea:focus, select:focus {
     outline: none;
-    border-color: var(--teal-600);
-    box-shadow:
-      0 0 0 2px rgba(13,148,136,0.25),
-      0 10px 24px -12px rgba(13,148,136,0.4);
+    border-color: var(--ring);
+    box-shadow: 0 0 0 2px rgba(13,148,136,.25);
   }
-  input:disabled,
-  textarea:disabled,
-  select:disabled {
-    opacity: .7;
-    color: var(--ivory-70) !important;
-  }
-  /* shadcn SelectTrigger */
+
+  /* shadcn SelectTrigger (button[role=combobox]) */
   button[role="combobox"] {
     color: var(--ivory) !important;
     background-color: rgba(255,255,255,0.06);
     border: 1px solid var(--border);
+    min-height: 2.5rem;
+    border-radius: var(--radius);
   }
   button[role="combobox"][data-placeholder="true"],
   button[role="combobox"][data-placeholder] {
     color: var(--ivory-70) !important;
   }
-  input, textarea, select, button[role="combobox"] {
-    min-height: 2.5rem; /* h-10 */
-    border-radius: 0.75rem; /* match --radius */
-  }
 }
 
-/* =========================
-   Extra safety: if anything still sets "black" text,
-   force ivory (headings are already protected).
-   ========================= */
-@layer utilities {
-  :where(.theme-card, .theme-bg, body) :where(.text-black, .text-gray-900, .text-gray-800, .text-slate-900, .text-neutral-900) {
-    color: var(--foreground) !important;
+/* ===== Hero helpers (subtle overlay, no glows) ===== */
+@layer components {
+  .hero-image {
+    @apply absolute inset-0 w-full h-full object-cover;
+    opacity: .5; /* soft fade */
+  }
+  .hero-overlay {
+    @apply absolute inset-0;
+    background: linear-gradient(to bottom, rgba(17,24,39,.50), rgba(17,24,39,.70));
   }
 }
-
