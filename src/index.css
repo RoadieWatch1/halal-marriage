@@ -11,7 +11,7 @@
     --teal-600: #0d9488; /* primary */
     --teal-700: #0f766e;
 
-    --gold-500: #d4af37; /* warm gold (kept for accents/buttons if needed) */
+    --gold-500: #d4af37; /* warm gold (still available for accents) */
     --gold-600: #c99c1a;
 
     --ivory: #f8f7f2;
@@ -56,15 +56,16 @@
 
   * { @apply border-border; }
 
-  /* Titles: black with a soft teal glow BELOW */
+  /* Stronger/brighter headings: black + stronger teal glow */
   h1, h2, h3, h4, h5, h6 {
-    color: #0a0a0a; /* black titles */
+    color: #0a0a0a !important; /* keep titles black */
     text-shadow:
-      0 3px 10px rgba(13,148,136,0.60),
-      0 1px 3px rgba(13,148,136,0.35);
+      0 8px 28px rgba(13,148,136,0.55),
+      0 3px 12px rgba(13,148,136,0.45),
+      0 1px 2px rgba(13,148,136,0.35);
   }
 
-  /* Optional: labels can stay neutral (no gold) */
+  /* Labels: neutral and readable */
   label, .label, .form-label { color: var(--ivory) !important; }
 
   body {
@@ -73,6 +74,12 @@
       radial-gradient(1200px 600px at 10% 90%, rgba(13,148,136,.12), transparent 60%),
       linear-gradient(135deg, #0e1a1a 0%, #0f2526 40%, var(--charcoal-900) 100%);
     min-height: 100vh;
+  }
+
+  /* Global fix: any Tailwind "black" text utilities become ivory
+     (but headings above still stay black due to !important + specificity) */
+  :where(.text-black, .text-gray-900, .text-gray-800, .text-slate-900, .text-neutral-900) {
+    color: var(--ivory) !important;
   }
 }
 
@@ -93,15 +100,16 @@
     background: rgba(31, 41, 55, 0.6);
     border-color: var(--border);
     backdrop-filter: blur(8px);
-    color: var(--foreground); /* ensure default text inside cards is ivory */
+    color: var(--foreground); /* default text inside cards is ivory */
   }
 
-  /* Keep headings black even inside cards */
+  /* Keep headings black inside cards too */
   .theme-card :where(h1,h2,h3,h4,h5,h6) {
     color: #0a0a0a !important;
     text-shadow:
-      0 3px 10px rgba(13,148,136,0.60),
-      0 1px 3px rgba(13,148,136,0.35);
+      0 8px 28px rgba(13,148,136,0.55),
+      0 3px 12px rgba(13,148,136,0.45),
+      0 1px 2px rgba(13,148,136,0.35);
   }
 
   /* Primary buttons (teal) */
@@ -136,7 +144,6 @@
    ========================= */
 @layer components {
   .hero-overlay {
-    /* removed gold vignette; keep subtle teal */
     background:
       radial-gradient(1000px 500px at 80% 20%, rgba(13, 148, 136, 0.20), transparent 60%),
       linear-gradient(to bottom, rgba(17, 24, 39, 0.65), rgba(17, 24, 39, 0.55) 40%, rgba(17, 24, 39, 0.75));
@@ -243,12 +250,12 @@
 }
 
 /* =========================
-   Prevent accidental black text inside cards,
-   but let headings stay black
+   Extra safety: if anything still sets "black" text,
+   force ivory (headings are already protected).
    ========================= */
 @layer utilities {
-  .theme-card :where(.text-black, .text-gray-900, .text-slate-900, .text-neutral-900) {
-    color: var(--foreground) !important; /* ivory for body text */
+  :where(.theme-card, .theme-bg, body) :where(.text-black, .text-gray-900, .text-gray-800, .text-slate-900, .text-neutral-900) {
+    color: var(--foreground) !important;
   }
-  /* headlings inside cards stay black per .theme-card heading rule above */
 }
+
