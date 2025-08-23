@@ -22,20 +22,28 @@ type ProfileRow = {
   first_name?: string | null;
   age?: number | null;
 
-  // ✅ split location fields
+  // split location fields
   city?: string | null;
   state?: string | null;
   // legacy combined (kept for fallback/compat)
   location?: string | null;
 
-  // ✅ gender
+  // gender
   gender?: string | null;
 
   ethnicity?: string | null;
   occupation?: string | null;
   education?: string | null;
+
+  // marital status (supports polygyny-friendly values stored as text)
   marital_status?: string | null;
+
+  // muslim status (stored as revert_status for compatibility)
   revert_status?: string | null;
+
+  // ✅ NEW: Shahada Age (text)
+  shahada_age?: string | null;
+
   prayer_status?: string | null;
   sect?: string | null;
   hide_sect?: boolean | null;
@@ -64,7 +72,6 @@ const Index: React.FC = () => {
     if (!row) return null;
     const city = row.city || '';
     const state = row.state || '';
-    // Provide a consistent combined string when older components still read `location`
     const combinedLocation = row.location || [city, state].filter(Boolean).join(', ');
 
     return {
@@ -76,14 +83,20 @@ const Index: React.FC = () => {
       state,
       location: combinedLocation,
 
-      // ✅ gender surfaced to client state
+      // gender
       gender: row.gender || '',
 
       ethnicity: row.ethnicity || '',
       occupation: row.occupation || '',
       education: row.education || '',
       maritalStatus: row.marital_status || '',
+
+      // “Muslim Status” in UI; remains revert_status in DB
       revertStatus: row.revert_status || '',
+
+      // ✅ map to form initialData
+      shahadaAge: row.shahada_age || '',
+
       prayerStatus: row.prayer_status || '',
       sect: row.sect || '',
       hideSect: Boolean(row.hide_sect),
@@ -221,20 +234,26 @@ const Index: React.FC = () => {
       first_name: profileData.firstName || null,
       age: profileData.age ? Number(profileData.age) : null,
 
-      // ✅ write split fields
+      // write split fields
       city: profileData.city || null,
       state: profileData.state || null,
       // keep legacy combined
       location: combinedLocation,
 
-      // ✅ persist gender
+      // persist gender
       gender: profileData.gender || null,
 
       ethnicity: profileData.ethnicity || null,
       occupation: profileData.occupation || null,
       education: profileData.education || null,
       marital_status: profileData.maritalStatus || null,
+
+      // muslim status (stored as revert_status)
       revert_status: profileData.revertStatus || null,
+
+      // ✅ NEW: persist Shahada Age
+      shahada_age: profileData.shahadaAge || null,
+
       prayer_status: profileData.prayerStatus || null,
       sect: profileData.sect || null,
       hide_sect: !!profileData.hideSect,

@@ -31,12 +31,16 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ onSave, initialData = {}, onB
       (typeof initialData.location === 'string' ? (initialData.location.split(',')[0] || '').trim() : ''),
     state:
       initialData.state ||
-      (typeof initialData.location === 'string' ? ((initialData.location.split(',')[1] || '').trim()) : ''),
+      (typeof initialData.location === 'string' ? (initialData.location.split(',')[1] || '').trim() : ''),
     ethnicity: initialData.ethnicity || '',
     occupation: initialData.occupation || '',
     education: initialData.education || '',
+    // ✅ will include polygyny statuses
     maritalStatus: initialData.maritalStatus || '',
+    // ✅ keep the same data key for compatibility; label shown to users is "Muslim Status"
     revertStatus: initialData.revertStatus || '',
+    // ✅ NEW: Shahada Age (free text: "2 years", "since 2021", "planning", etc.)
+    shahadaAge: initialData.shahadaAge || '',
     prayerStatus: initialData.prayerStatus || '',
     sect: initialData.sect || '',
     hideSect: Boolean(initialData.hideSect) || false,
@@ -54,19 +58,20 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ onSave, initialData = {}, onB
     setProfile((p) => ({
       ...p,
       firstName: initialData.firstName ?? p.firstName,
-      gender: initialData.gender ?? p.gender, // ✅ keep gender in sync
+      gender: initialData.gender ?? p.gender,
       age: initialData.age ?? p.age,
       city:
         initialData.city ??
         (typeof initialData.location === 'string' ? (initialData.location.split(',')[0] || '').trim() : p.city),
       state:
         initialData.state ??
-        (typeof initialData.location === 'string' ? ((initialData.location.split(',')[1] || '').trim()) : p.state),
+        (typeof initialData.location === 'string' ? (initialData.location.split(',')[1] || '').trim() : p.state),
       ethnicity: initialData.ethnicity ?? p.ethnicity,
       occupation: initialData.occupation ?? p.occupation,
       education: initialData.education ?? p.education,
       maritalStatus: initialData.maritalStatus ?? p.maritalStatus,
       revertStatus: initialData.revertStatus ?? p.revertStatus,
+      shahadaAge: initialData.shahadaAge ?? p.shahadaAge,
       prayerStatus: initialData.prayerStatus ?? p.prayerStatus,
       sect: initialData.sect ?? p.sect,
       hideSect: typeof initialData.hideSect === 'boolean' ? initialData.hideSect : p.hideSect,
@@ -103,7 +108,7 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ onSave, initialData = {}, onB
   const handleMediaUpdate = (incomingPhotos: string | string[] | undefined, incomingVideo?: string | null) => {
     setProfile((prev) => {
       const prevPhotos = Array.isArray(prev.photos) ? prev.photos : [];
-      const nextVideo = incomingVideo === undefined ? prev.video : (incomingVideo || '');
+      const nextVideo = incomingVideo === undefined ? prev.video : incomingVideo || '';
 
       const newItems = Array.isArray(incomingPhotos)
         ? incomingPhotos
@@ -130,16 +135,26 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ onSave, initialData = {}, onB
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Quick client validation for required select
+    if (!profile.gender) {
+      // Replace with toast if desired
+      alert('Please select your gender.');
+      return;
+    }
+
     // Backward-compat: keep a combined 'location' string if other parts still use it
     const location = [profile.city, profile.state].filter(Boolean).join(', ').trim();
 
     const finalData = {
       ...profile,
       age: profile.age === '' ? '' : Number(profile.age),
-      gender: profile.gender, // ✅ pass gender through
-      location,               // legacy/combined
+      gender: profile.gender,
+      location, // legacy/combined
       city: profile.city,
       state: profile.state,
+      // ensure we pass through the new field to be saved upstream
+      shahadaAge: profile.shahadaAge,
     };
     onSave(finalData);
   };
@@ -209,14 +224,14 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ onSave, initialData = {}, onB
                 />
               </div>
 
-              {/* ✅ Gender */}
+              {/* Gender */}
               <div>
                 <Label htmlFor="gender" className="text-white">Gender</Label>
                 <Select
                   value={profile.gender}
                   onValueChange={(value) => setProfile({ ...profile, gender: value })}
                 >
-                  <SelectTrigger id="gender">
+                  <SelectTrigger id="gender" aria-required="true">
                     <SelectValue placeholder="Select gender" />
                   </SelectTrigger>
                   <SelectContent>
@@ -239,7 +254,7 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ onSave, initialData = {}, onB
                 />
               </div>
 
-              {/* ✅ City / State split */}
+              {/* City / State split */}
               <div className="md:col-span-1">
                 <Label htmlFor="city" className="text-white">City</Label>
                 <Input
@@ -305,6 +320,11 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ onSave, initialData = {}, onB
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="single">Single</SelectItem>
+                    {/* ✅ Polygyny-friendly statuses */}
+                    <SelectItem value="married_1_wife">Married — 1 wife</SelectItem>
+                    <SelectItem value="married_2_wives">Married — 2 wives</SelectItem>
+                    <SelectItem value="married_3_wives">Married — 3 wives</SelectItem>
+                    {/* Existing statuses */}
                     <SelectItem value="divorced">Divorced</SelectItem>
                     <SelectItem value="widowed">Widowed</SelectItem>
                   </SelectContent>
@@ -328,8 +348,9 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ onSave, initialData = {}, onB
                 </Select>
               </div>
 
+              {/* ✅ Renamed visually: Muslim Status (keeps values for compatibility) */}
               <div>
-                <Label className="text-white">Revert Status</Label>
+                <Label className="text-white">Muslim Status</Label>
                 <Select
                   value={profile.revertStatus || undefined}
                   onValueChange={(value) => setProfile({ ...profile, revertStatus: value })}
@@ -338,11 +359,25 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ onSave, initialData = {}, onB
                     <SelectValue placeholder="Select one" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="revert">Revert</SelectItem>
-                    <SelectItem value="born">Born Muslim</SelectItem>
+                    <SelectItem value="born">Born into Islam</SelectItem>
+                    <SelectItem value="revert">Embraced Islam</SelectItem>
                     <SelectItem value="prefer_not_say">Prefer not to say</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+
+              {/* ✅ NEW: Shahada Age */}
+              <div className="md:col-span-3">
+                <Label htmlFor="shahadaAge" className="text-white">Shahada Age</Label>
+                <Input
+                  id="shahadaAge"
+                  value={profile.shahadaAge}
+                  onChange={(e) => setProfile({ ...profile, shahadaAge: e.target.value })}
+                  placeholder={`e.g., "2 years", "since 2021", or "planning"`}
+                />
+                <p className="text-xs theme-text-muted mt-1">
+                  Share how long it’s been since you took the Shahada — or write “planning” if you intend to take it.
+                </p>
               </div>
 
               <div className="md:col-span-2">
@@ -358,7 +393,6 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ onSave, initialData = {}, onB
               <div className="flex items-center justify-between rounded-lg border border-border p-3">
                 <div>
                   <Label htmlFor="hideSect" className="text-white">Hide sect on public profile</Label>
-                  <p className="text-xs theme-text-muted mt-1">Still visible to admins if needed.</p>
                 </div>
                 <Switch
                   id="hideSect"

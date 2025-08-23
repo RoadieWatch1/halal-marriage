@@ -30,3 +30,6 @@ dist/
 .env.local
 NUL
 NUL
+.env
+.env.*
+supabase/.temp

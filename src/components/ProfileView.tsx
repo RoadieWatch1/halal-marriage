@@ -20,22 +20,30 @@ type Profile = {
   id: string;
   first_name: string | null;
   age: number | null;
+
   // split location fields
   city: string | null;
   state: string | null;
   // legacy combined (fallback only)
   location: string | null;
+
   occupation: string | null;
   education: string | null;
   marital_status: string | null;
+
+  // faith-related
   prayer_status: string | null;
+  revert_status: string | null;   // shown as "Muslim Status"
+  shahada_age?: string | null;    // NEW: show if present
   sect: string | null;
   hide_sect: boolean | null;
+
   bio: string | null;
   photos: string[] | null;
   video: string | null;
   is_public: boolean | null;
   updated_at?: string | null;
+
   // 🚦 needed for gender-based visibility
   gender?: 'male' | 'female' | null;
 };
@@ -93,6 +101,8 @@ const ProfileView: React.FC<Props> = ({ userId, onBack, onConnect }) => {
               'education',
               'marital_status',
               'prayer_status',
+              'revert_status', // Muslim Status
+              'shahada_age',   // NEW
               'sect',
               'hide_sect',
               'bio',
@@ -152,6 +162,15 @@ const ProfileView: React.FC<Props> = ({ userId, onBack, onConnect }) => {
   // 🚦 Gender gating
   const sameGenderBlocked =
     myGender && (myGender === 'male' || myGender === 'female') && p?.gender && myGender === p.gender;
+
+  // Friendly label for revert_status shown as “Muslim Status”
+  const muslimStatusLabel = (() => {
+    const v = (p?.revert_status || '').toLowerCase();
+    if (v === 'born') return 'Born into Islam';
+    if (v === 'revert' || v === 'embraced') return 'Embraced Islam';
+    if (v === 'prefer_not_say' || v === 'prefer not to say') return 'Prefer not to say';
+    return p?.revert_status || '—';
+  })();
 
   return (
     <div className="min-h-screen theme-bg p-4">
@@ -279,6 +298,14 @@ const ProfileView: React.FC<Props> = ({ userId, onBack, onConnect }) => {
                   <div className="text-sm theme-text-body">
                     <strong className="text-white">Marital Status:</strong>{' '}
                     {p.marital_status || '—'}
+                  </div>
+                  <div className="text-sm theme-text-body">
+                    <strong className="text-white">Muslim Status:</strong>{' '}
+                    {muslimStatusLabel}
+                  </div>
+                  <div className="text-sm theme-text-body">
+                    <strong className="text-white">Shahada Age:</strong>{' '}
+                    {p.shahada_age && p.shahada_age.trim() !== '' ? p.shahada_age : '—'}
                   </div>
                 </div>
 
