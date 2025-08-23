@@ -33,15 +33,16 @@ type ConversationItem = {
 type MessageRow = {
   id: string;
   sender_id: string;
-  content?: string | null; // may exist in some schemas
-  body?: string | null;    // fallback column name in other schemas
+  content?: string | null; // some schemas
+  body?: string | null;    // other schemas
   created_at: string;
+  connection_id?: string;
 };
 
 interface MessagesProps {
   user: any;
-  initialConnectionId?: string; // optional: open a specific thread
-  onBack?: () => void;          // navigate back (e.g., to dashboard)
+  initialConnectionId?: string;
+  onBack?: () => void;
 }
 
 const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }) => {
@@ -56,7 +57,6 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
-  // --- Back handler: prefer prop; otherwise force hash route to dashboard (stays in app)
   const handleBack = () => {
     if (onBack) return onBack();
     if (typeof window !== 'undefined') {
@@ -68,17 +68,15 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
     }
   };
 
-  // keep selected thread in sync if parent changes the initialConnectionId
   useEffect(() => {
     if (initialConnectionId) setSelectedConnId(initialConnectionId);
   }, [initialConnectionId]);
 
-  // get uid
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUid(data.user?.id ?? null));
   }, []);
 
-  // load conversations (accepted connections only)
+  // Load conversations
   useEffect(() => {
     if (!uid) return;
     let active = true;
@@ -109,11 +107,11 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
         const pMap = new Map<string, ProfileBrief>();
         (profiles ?? []).forEach((p: any) => pMap.set(p.id, p));
 
-        // last messages (support both content/body)
+        // Last messages — select * to avoid non-existent column errors
         const { data: lastMsgs, error: lErr } = list.length
           ? await supabase
               .from('messages')
-              .select('connection_id, content, body, created_at')
+              .select('*')
               .in('connection_id', list.map((c) => c.id))
               .order('created_at', { ascending: false })
           : ({ data: [] } as any);
@@ -135,11 +133,7 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
 
         if (!active) return;
         setConversations(convs);
-
-        // auto-select a thread if none selected
-        if (!selectedConnId && convs.length > 0) {
-          setSelectedConnId(convs[0].conn.id);
-        }
+        if (!selectedConnId && convs.length > 0) setSelectedConnId(convs[0].conn.id);
       } catch (e: any) {
         if (!active) return;
         const msg = e?.message || 'Failed to load conversations';
@@ -156,7 +150,7 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uid]);
 
-  // load messages for selected conversation + subscribe realtime
+  // Load messages for selected conversation + subscribe realtime
   useEffect(() => {
     if (!selectedConnId) return;
     let active = true;
@@ -167,7 +161,7 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
       try {
         const { data, error } = await supabase
           .from('messages')
-          .select('id, sender_id, content, body, created_at')
+          .select('*') // <- avoid non-existent column errors
           .eq('connection_id', selectedConnId)
           .order('created_at', { ascending: true });
 
@@ -184,10 +178,9 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
       }
     };
 
-    // initial load
     load();
 
-    // realtime subscription
+    // realtime
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
       channelRef.current = null;
@@ -201,7 +194,14 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
           const m = payload.new as any;
           setMessages((prev) => [
             ...prev,
-            { id: m.id, sender_id: m.sender_id, content: m.content, body: m.body, created_at: m.created_at },
+            {
+              id: m.id,
+              sender_id: m.sender_id,
+              content: m.content,
+              body: m.body,
+              created_at: m.created_at,
+              connection_id: m.connection_id,
+            },
           ]);
         }
       )
@@ -225,8 +225,6 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedConnId || !uid) return;
     const text = newMessage.trim();
-
-    // clear optimistically (will be re-added by realtime on success)
     setNewMessage('');
 
     // Try inserting into `content`; if that column doesn't exist, fallback to `body`
@@ -248,7 +246,6 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
   };
 
   const convList = useMemo(() => conversations, [conversations]);
-
   const activeOther = useMemo(
     () => convList.find((c) => c.conn.id === selectedConnId)?.other ?? null,
     [convList, selectedConnId]
@@ -341,17 +338,11 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
                           <div key={message.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
                             <div
                               className={`max-w-[70%] p-3 rounded-lg break-words whitespace-pre-wrap ${
-                                isMine
-                                  ? 'theme-button text-white'
-                                  : 'bg-card text-white border border-border'
+                                isMine ? 'theme-button text-white' : 'bg-card text-white border border-border'
                               }`}
                             >
                               <p className="text-sm">{text || '…'}</p>
-                              <p
-                                className={`text-xs mt-1 ${
-                                  isMine ? 'text-white/70' : 'theme-text-muted'
-                                }`}
-                              >
+                              <p className={`text-xs mt-1 ${isMine ? 'text-white/70' : 'theme-text-muted'}`}>
                                 {new Date(message.created_at).toLocaleString()}
                               </p>
                             </div>
@@ -386,9 +377,7 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
                         <Send className="h-4 w-4" />
                       </Button>
                     </div>
-                    <div className="mt-1 text-xs theme-text-muted">
-                      Keep it respectful and marriage-focused.
-                    </div>
+                    <div className="mt-1 text-xs theme-text-muted">Keep it respectful and marriage-focused.</div>
                   </div>
                 </CardContent>
               </>
