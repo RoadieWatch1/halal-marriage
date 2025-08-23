@@ -1,70 +1,73 @@
-// C:\Users\vizir\halal-marriage\src\components\HeroSection.tsx
-import React, { useState } from 'react';
+import React from 'react';
 import { Button } from '@/components/ui/button';
-import { ArrowRight } from 'lucide-react';
 
 interface HeroSectionProps {
   onGetStarted: () => void;
 }
 
-const HERO_IMG =
-  'https://d64gsuwffb70l.cloudfront.net/687ff332c691ebefc6160e57_1754254356214_c0b9a025.jpg';
-const FALLBACK_IMG = '/placeholder.svg';
-
 const HeroSection: React.FC<HeroSectionProps> = ({ onGetStarted }) => {
-  const [bgSrc, setBgSrc] = useState<string>(HERO_IMG);
-
   return (
-    <section className="relative min-h-screen theme-bg flex items-center justify-center">
-      {/* Background */}
-      <div className="absolute inset-0 -z-10">
-        <img
-          src={bgSrc}
-          alt="American Muslims seeking marriage — respectful, values-first community"
-          className="w-full h-full object-cover opacity-30"
-          onError={() => setBgSrc(FALLBACK_IMG)}
-          fetchPriority="high"
-          decoding="async"
-        />
-        <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/40 to-black/60 pointer-events-none" />
-      </div>
+    <section className="relative min-h-screen overflow-hidden">
+      {/* Background image */}
+      <img
+        src="/hero.jpg"
+        alt="Muslim woman in hijab"
+        className="absolute inset-0 h-full w-full object-cover"
+        fetchPriority="high"
+        decoding="async"
+        onError={(e) => {
+          // graceful fallback if the image path is wrong
+          (e.currentTarget as HTMLImageElement).style.display = 'none';
+        }}
+      />
+
+      {/* Faded overlay (charcoal + subtle teal glow) */}
+      <div className="absolute inset-0 hero-overlay pointer-events-none" />
 
       {/* Content */}
-      <div className="relative z-10 flex items-center justify-center min-h-screen px-4">
-        <div className="text-center max-w-4xl mx-auto">
-          <h1 className="text-5xl md:text-7xl font-bold text-white mb-2 drop-shadow-lg">
-            AM4M
-          </h1>
-          <h2 className="text-2xl md:text-3xl font-semibold text-white mb-4">
-            American Muslims for Marriage
-          </h2>
-
-          <p id="hero-lede" className="text-xl md:text-2xl theme-text-body mb-8 leading-relaxed">
-            A halal matrimonial platform connecting serious Muslims seeking marriage with Islamic values.
-          </p>
-
-          <div className="space-y-2 text-lg theme-text-body mb-10">
-            <p>✨ Islamic values-centered matching</p>
-            <p>🤝 Family involvement welcomed</p>
-            <p>🔒 Privacy and verification focused</p>
-            <p>💝 Serious marriage intentions only</p>
+      <div className="relative z-10 flex min-h-screen items-center justify-center px-6">
+        <div className="mx-auto w-full max-w-4xl text-center">
+          <div className="inline-flex items-center gap-2 rounded-full bg-black/40 px-4 py-1 text-xs font-medium tracking-wide text-ivory/90 ring-1 ring-white/10 backdrop-blur">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-gold/80" />
+            AM4M • American Muslims for Marriage
           </div>
 
-          {/* Clear, accessible CTA button */}
-          <Button
-            onClick={onGetStarted}
-            size="lg"
-            className="theme-button px-8 py-6 text-lg font-semibold rounded-xl shadow-xl transform hover:scale-[1.03] focus-visible:scale-[1.03] transition-transform duration-200"
-            aria-label="Begin your journey"
-            aria-describedby="hero-lede"
-            data-testid="cta-begin"
-          >
-            Begin Your Journey
-            <ArrowRight className="ml-2 h-5 w-5" />
-          </Button>
+          <h1 className="mt-5 text-5xl font-bold leading-tight text-ivory md:text-7xl">
+            Find the one—<span className="text-gold">with ihsān</span>
+          </h1>
 
-          <p className="text-sm theme-text-muted mt-6">
-            “And among His signs is that He created for you mates from among yourselves” — Quran 30:21
+          <p className="mx-auto mt-4 max-w-2xl text-lg leading-relaxed text-ivory/85 md:text-xl">
+            A halal matrimonial platform for American Muslims—privacy-first, wali-friendly, and focused on nikāh.
+          </p>
+
+          <ul className="mx-auto mt-8 grid max-w-2xl grid-cols-1 gap-2 text-left text-ivory/85 sm:grid-cols-2">
+            <li className="bullet">Islamic values–centered matching</li>
+            <li className="bullet">Family involvement welcome</li>
+            <li className="bullet">Privacy & verification focused</li>
+            <li className="bullet">For serious marriage intentions</li>
+          </ul>
+
+          <div className="mt-10 flex items-center justify-center gap-4">
+            <Button
+              onClick={onGetStarted}
+              size="lg"
+              className="btn-cta"
+              aria-label="Begin your journey"
+            >
+              Begin Your Journey
+            </Button>
+
+            <a
+              href="#s=search"
+              className="btn-secondary"
+              aria-label="Browse matches"
+            >
+              Browse Matches
+            </a>
+          </div>
+
+          <p className="mt-8 text-sm text-ivory/75">
+            “And among His signs is that He created for you mates from among yourselves…” — Qur’an 30:21
           </p>
         </div>
       </div>

@@ -2,69 +2,176 @@
 @tailwind components;
 @tailwind utilities;
 
+/* =========================
+   Base theme tokens
+   ========================= */
 @layer base {
   :root {
-    --background: #021e1f;
-    --foreground: #ffffff;
-    --card: #032f30;
-    --card-foreground: #ffffff;
-    --popover: #032f30;
-    --popover-foreground: #ffffff;
-    --primary: #FF6A00;
-    --primary-foreground: #ffffff;
-    --secondary: #8da3a4;
-    --secondary-foreground: #ffffff;
-    --muted: #8da3a4;
-    --muted-foreground: #B2C8C9;
-    --accent: #FF6A00;
-    --accent-foreground: #ffffff;
+    /* Brand palette */
+    --teal-600: #0d9488; /* primary */
+    --teal-700: #0f766e;
+
+    --gold-500: #d4af37; /* warm gold */
+    --gold-600: #c99c1a;
+
+    --ivory: #f8f7f2;
+    --charcoal-900: #111827; /* background */
+    --charcoal-800: #1f2937; /* cards/popovers */
+    --charcoal-700: #374151; /* secondary/muted */
+
+    /* Shadcn/tailwind CSS variables (maps to palette above) */
+    --background: var(--charcoal-900);
+    --foreground: var(--ivory);
+
+    --card: var(--charcoal-800);
+    --card-foreground: var(--ivory);
+
+    --popover: var(--charcoal-800);
+    --popover-foreground: var(--ivory);
+
+    --primary: var(--teal-600);
+    --primary-foreground: var(--ivory);
+
+    --secondary: var(--charcoal-700);
+    --secondary-foreground: var(--ivory);
+
+    --muted: var(--charcoal-700);
+    --muted-foreground: #e5e7eb;
+
+    --accent: var(--gold-500);
+    --accent-foreground: var(--charcoal-900);
+
     --destructive: #ef4444;
-    --destructive-foreground: #ffffff;
-    --border: #042a2b;
-    --input: #032f30;
-    --ring: #FF6A00;
-    --radius: 0.5rem;
-  }
-}
+    --destructive-foreground: var(--ivory);
 
-@layer base {
-  * {
-    @apply border-border;
-    color: #f5f5f5 !important;
+    --border: rgba(255, 255, 255, 0.08);
+    --input: var(--charcoal-800);
+    --ring: var(--gold-500);
+
+    --radius: 0.75rem;
   }
+
+  * { @apply border-border; }
+
   body {
-    @apply bg-background font-sans;
-    background: linear-gradient(135deg, #021e1f 0%, #032f30 50%, #042a2b 100%);
+    @apply bg-background text-foreground font-sans;
+    /* Charcoal base with a subtle teal sweep */
+    background:
+      radial-gradient(1200px 600px at 10% 90%, rgba(13,148,136,.12), transparent 60%),
+      linear-gradient(135deg, #0e1a1a 0%, #0f2526 40%, var(--charcoal-900) 100%);
     min-height: 100vh;
-    color: #f5f5f5 !important;
   }
 }
 
+/* =========================
+   Component-level helpers
+   ========================= */
 @layer components {
+  /* App background section */
   .theme-bg {
-    background: linear-gradient(135deg, #021e1f 0%, #032f30 50%, #042a2b 100%);
+    background:
+      radial-gradient(1000px 500px at 85% 15%, rgba(212,175,55,.10), transparent 60%),
+      linear-gradient(135deg, #0e1a1a 0%, #0f2526 40%, var(--charcoal-900) 100%);
   }
-  
+
+  /* Cards */
   .theme-card {
-    @apply bg-card border border-border rounded-lg shadow-lg;
-    background-color: #032f30;
-    border-color: #042a2b;
+    @apply rounded-lg shadow-lg border;
+    background: rgba(31, 41, 55, 0.6);                /* var(--charcoal-800)/60 */
+    border-color: var(--border);
+    backdrop-filter: blur(8px);
   }
-  
+
+  /* Primary buttons (teal) */
   .theme-button {
-    @apply bg-primary hover:bg-primary/90 text-primary-foreground;
-    background-color: #FF6A00;
+    @apply inline-flex items-center justify-center font-semibold rounded-xl px-4 py-2 transition;
+    color: var(--ivory);
+    background: linear-gradient(180deg, var(--teal-600), var(--teal-700));
+    border: 1px solid rgba(255,255,255,.08);
+    box-shadow:
+      0 10px 18px -10px rgba(13, 148, 136, 0.6),
+      inset 0 1px 0 0 rgba(255,255,255,.12);
   }
-  
   .theme-button:hover {
-    background-color: #E55A00;
+    transform: translateY(-1px);
+    box-shadow:
+      0 14px 22px -10px rgba(13, 148, 136, 0.75),
+      0 0 0 2px rgba(212,175,55,.35),
+      inset 0 1px 0 0 rgba(255,255,255,.2);
   }
-  
-  .theme-text-muted {
-    color: #8da3a4;
+  .theme-button:active { transform: translateY(0); }
+
+  /* Text tones */
+  .theme-text-muted { color: var(--muted-foreground); }
+  .theme-text-body  { color: #f3f4f6; }
+
+  /* Utility accents (without editing tailwind config) */
+  .text-ivory   { color: var(--ivory); }
+  .text-gold    { color: var(--gold-500); }
+  .bg-charcoal  { background-color: var(--charcoal-900); }
+}
+
+/* =========================
+   Hero & CTA helpers
+   ========================= */
+@layer components {
+  /* Faded hero overlay: charcoal + soft teal glow + gold vignette */
+  .hero-overlay {
+    background:
+      radial-gradient(1000px 500px at 80% 20%, rgba(13, 148, 136, 0.20), transparent 60%),
+      radial-gradient(800px 400px at 15% 85%, rgba(212, 175, 55, 0.12), transparent 60%),
+      linear-gradient(to bottom, rgba(17, 24, 39, 0.65), rgba(17, 24, 39, 0.55) 40%, rgba(17, 24, 39, 0.75));
   }
-  
-  .theme-text-body {
-    color: #B2C8C9;
+
+  /* CTA buttons used on the hero */
+  .btn-cta {
+    @apply inline-flex items-center justify-center rounded-xl px-6 py-3 text-base font-semibold transition-transform focus:outline-none;
+    color: var(--ivory);
+    background: linear-gradient(180deg, var(--teal-600), var(--teal-700));
+    border: 1px solid rgba(255,255,255,.08);
+    box-shadow:
+      0 10px 18px -10px rgba(13, 148, 136, 0.6),
+      inset 0 1px 0 0 rgba(255,255,255,.12);
+  }
+  .btn-cta:hover {
+    transform: translateY(-1px);
+    box-shadow:
+      0 14px 22px -10px rgba(13, 148, 136, 0.75),
+      0 0 0 2px rgba(212, 175, 55, .4),
+      inset 0 1px 0 0 rgba(255,255,255,.2);
+  }
+
+  .btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: .75rem 1rem;
+    border-radius: .75rem;
+    font-weight: 600;
+    border: 1px solid rgba(255,255,255,.12);
+    color: var(--ivory);
+    background: rgba(0,0,0,.25);
+    backdrop-filter: blur(6px);
+    text-decoration: none;
+    transition: box-shadow .2s ease, transform .2s ease, border-color .2s ease;
+  }
+  .btn-secondary:hover {
+    border-color: rgba(255,255,255,.2);
+    box-shadow: 0 0 0 2px rgba(212, 175, 55, .35);
+    transform: translateY(-1px);
+  }
+
+  /* Gold bullet list (used in hero feature list) */
+  .bullet { position: relative; padding-left: 1.25rem; }
+  .bullet::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0.6rem;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 9999px;
+    background: var(--gold-500);
+    box-shadow: 0 0 0 2px rgba(255,255,255,.2);
   }
 }
