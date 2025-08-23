@@ -19,7 +19,7 @@
     --charcoal-800: #1f2937; /* cards/popovers */
     --charcoal-700: #374151; /* secondary/muted */
 
-    /* Shadcn/tailwind CSS variables (maps to palette above) */
+    /* Shadcn/Tailwind mapped tokens */
     --background: var(--charcoal-900);
     --foreground: var(--ivory);
 
@@ -49,13 +49,6 @@
     --ring: var(--gold-500);
 
     --radius: 0.75rem;
-
-    /* Field readability */
-    --field-foreground: #e5e7eb;     /* light grey text inside inputs */
-    --field-placeholder: #9ca3af;    /* muted placeholder */
-    --field-bg: rgba(31, 41, 55, .85);
-    --field-border: rgba(255, 255, 255, .12);
-    --field-focus: rgba(212, 175, 55, .45); /* gold focus halo */
   }
 
   * { @apply border-border; }
@@ -67,37 +60,6 @@
       radial-gradient(1200px 600px at 10% 90%, rgba(13,148,136,.12), transparent 60%),
       linear-gradient(135deg, #0e1a1a 0%, #0f2526 40%, var(--charcoal-900) 100%);
     min-height: 100vh;
-  }
-
-  /* 🔎 Ensure inputs/selects/textarea text is readable on dark bg */
-  input, textarea, select {
-    color: var(--field-foreground) !important;
-    background-color: var(--field-bg) !important;
-    border-color: var(--field-border) !important;
-    caret-color: var(--gold-500);
-  }
-  input::placeholder,
-  textarea::placeholder {
-    color: var(--field-placeholder);
-    opacity: 1;
-  }
-  input:focus, textarea:focus, select:focus {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px var(--field-focus);
-  }
-
-  /* Radix Select trigger (shadcn <SelectTrigger/>) is a button[role=combobox] */
-  button[role="combobox"] {
-    color: var(--field-foreground) !important;
-    background-color: var(--field-bg) !important;
-    border-color: var(--field-border) !important;
-  }
-  /* Radix Select dropdown content */
-  [data-radix-popper-content-wrapper] [role="listbox"] {
-    color: var(--field-foreground);
-    background-color: var(--charcoal-800);
-    border: 1px solid var(--field-border);
   }
 }
 
@@ -143,17 +105,89 @@
   .theme-text-muted { color: var(--muted-foreground); }
   .theme-text-body  { color: #f3f4f6; }
 
-  /* Utility accents (without editing tailwind config) */
+  /* Utility accents */
   .text-ivory   { color: var(--ivory); }
   .text-gold    { color: var(--gold-500); }
   .bg-charcoal  { background-color: var(--charcoal-900); }
 }
 
 /* =========================
+   Inputs & form controls — higher contrast
+   (No markup changes needed)
+   ========================= */
+@layer components {
+  /* Base look for inputs, textareas, selects and shadcn select trigger (role=combobox) */
+  input:not([type="checkbox"]):not([type="radio"]),
+  textarea,
+  select,
+  button[role="combobox"] {
+    color: var(--ivory);
+    caret-color: var(--ivory);
+    background: rgba(31, 41, 55, 0.85);
+    border: 1px solid var(--border);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+  }
+
+  /* Inside cards, enforce contrast even if a component defaults to dark text */
+  .theme-card input:not([type="checkbox"]):not([type="radio"]),
+  .theme-card textarea,
+  .theme-card select,
+  .theme-card button[role="combobox"] {
+    color: var(--ivory) !important;
+    background: rgba(31, 41, 55, 0.85);
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: rgba(248, 247, 242, 0.55);
+    opacity: 1; /* Safari */
+  }
+
+  /* Focus glow (teal + gold) */
+  input:focus,
+  textarea:focus,
+  select:focus,
+  button[role="combobox"]:focus,
+  button[role="combobox"][data-state="open"] {
+    outline: none;
+    border-color: rgba(212,175,55,.55);
+    box-shadow:
+      0 0 0 2px rgba(212,175,55,.35),
+      0 12px 20px -12px rgba(13,148,136,.45),
+      inset 0 1px 0 rgba(255,255,255,.12);
+  }
+
+  /* Disabled state readability */
+  input:disabled,
+  textarea:disabled,
+  select:disabled,
+  button[role="combobox"][aria-disabled="true"] {
+    color: rgba(248,247,242,.6);
+    background: rgba(31,41,55,.5);
+  }
+
+  /* Optional: wrap groups with a soft glow background */
+  .form-glow {
+    background: linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,.01));
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.06),
+      0 10px 24px -18px rgba(13,148,136,.6),
+      0 0 0 1px rgba(212,175,55,.18);
+  }
+  .form-glow:focus-within {
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.06),
+      0 18px 30px -16px rgba(13,148,136,.6),
+      0 0 0 2px rgba(212,175,55,.35);
+  }
+}
+
+/* =========================
    Hero & CTA helpers
    ========================= */
 @layer components {
-  /* Faded hero overlay: charcoal + soft teal glow + gold vignette */
   .hero-overlay {
     background:
       radial-gradient(1000px 500px at 80% 20%, rgba(13, 148, 136, 0.20), transparent 60%),
@@ -161,7 +195,6 @@
       linear-gradient(to bottom, rgba(17, 24, 39, 0.65), rgba(17, 24, 39, 0.55) 40%, rgba(17, 24, 39, 0.75));
   }
 
-  /* CTA buttons used on the hero */
   .btn-cta {
     @apply inline-flex items-center justify-center rounded-xl px-6 py-3 text-base font-semibold transition-transform focus:outline-none;
     color: var(--ivory);
@@ -199,7 +232,6 @@
     transform: translateY(-1px);
   }
 
-  /* Gold bullet list (used in hero feature list) */
   .bullet { position: relative; padding-left: 1.25rem; }
   .bullet::before {
     content: '';
