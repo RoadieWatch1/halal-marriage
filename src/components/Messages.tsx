@@ -33,16 +33,16 @@ type ConversationItem = {
 type MessageRow = {
   id: string;
   sender_id: string;
-  content?: string | null; // some schemas
-  body?: string | null;    // other schemas
+  content?: string | null; // may exist in some schemas
+  body?: string | null;    // fallback column name in other schemas
   created_at: string;
   connection_id?: string;
 };
 
 interface MessagesProps {
   user: any;
-  initialConnectionId?: string;
-  onBack?: () => void;
+  initialConnectionId?: string; // open a specific thread
+  onBack?: () => void;          // navigate back (e.g., to dashboard)
 }
 
 const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }) => {
@@ -76,7 +76,7 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
     supabase.auth.getUser().then(({ data }) => setUid(data.user?.id ?? null));
   }, []);
 
-  // Load conversations
+  // Load conversations (accepted only)
   useEffect(() => {
     if (!uid) return;
     let active = true;
@@ -107,7 +107,7 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
         const pMap = new Map<string, ProfileBrief>();
         (profiles ?? []).forEach((p: any) => pMap.set(p.id, p));
 
-        // Last messages — select * to avoid non-existent column errors
+        // Last messages — select * to avoid missing-column errors
         const { data: lastMsgs, error: lErr } = list.length
           ? await supabase
               .from('messages')
@@ -133,6 +133,7 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
 
         if (!active) return;
         setConversations(convs);
+
         if (!selectedConnId && convs.length > 0) setSelectedConnId(convs[0].conn.id);
       } catch (e: any) {
         if (!active) return;
@@ -161,7 +162,7 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
       try {
         const { data, error } = await supabase
           .from('messages')
-          .select('*') // <- avoid non-existent column errors
+          .select('*') // avoid missing-column errors (content vs body)
           .eq('connection_id', selectedConnId)
           .order('created_at', { ascending: true });
 
@@ -180,7 +181,7 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
 
     load();
 
-    // realtime
+    // realtime subscription
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
       channelRef.current = null;
@@ -225,6 +226,8 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedConnId || !uid) return;
     const text = newMessage.trim();
+
+    // clear optimistically (realtime will append on success)
     setNewMessage('');
 
     // Try inserting into `content`; if that column doesn't exist, fallback to `body`
@@ -252,7 +255,8 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
   );
 
   return (
-    <div className="min-h-screen theme-bg p-4">
+    // Add extra bottom padding so the fixed Back button never overlaps content
+    <div className="min-h-screen theme-bg p-4 pb-28 md:pb-8">
       <div className="max-w-6xl mx-auto space-y-4">
         {/* Top back button */}
         <div className="flex items-center justify-between">
@@ -321,8 +325,9 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
                   <p className="text-sm theme-text-muted">Maintain Islamic etiquette and keep intentions for nikah.</p>
                 </CardHeader>
 
+                {/* Make the inner area a column: messages scroll, input stays visible */}
                 <CardContent className="p-0 flex flex-col h-[450px]">
-                  {/* Messages */}
+                  {/* Messages (scrollable) */}
                   <div className="flex-1 p-4 space-y-4 overflow-y-auto">
                     {loadingMsgs ? (
                       <div className="flex items-center gap-2 theme-text-muted">
@@ -353,8 +358,8 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
                     <div ref={bottomRef} />
                   </div>
 
-                  {/* Message Input */}
-                  <div className="border-t border-border p-4">
+                  {/* Composer (sticky inside card) */}
+                  <div className="sticky bottom-0 border-t border-border p-3 bg-[rgba(31,41,55,0.9)] backdrop-blur z-10">
                     <div className="flex gap-2">
                       <Input
                         value={newMessage}
