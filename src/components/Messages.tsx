@@ -27,13 +27,14 @@ type ProfileBrief = {
 type ConversationItem = {
   conn: ConnectionRow;
   other: ProfileBrief | null;
-  lastMessage?: { content: string; created_at: string } | null;
+  lastMessage?: { text: string; created_at: string } | null;
 };
 
 type MessageRow = {
   id: string;
   sender_id: string;
-  content: string;
+  content?: string | null; // may exist in some schemas
+  body?: string | null;    // fallback column name in other schemas
   created_at: string;
 };
 
@@ -108,20 +109,21 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
         const pMap = new Map<string, ProfileBrief>();
         (profiles ?? []).forEach((p: any) => pMap.set(p.id, p));
 
-        // last messages (one query, then map)
+        // last messages (support both content/body)
         const { data: lastMsgs, error: lErr } = list.length
           ? await supabase
               .from('messages')
-              .select('connection_id, content, created_at')
+              .select('connection_id, content, body, created_at')
               .in('connection_id', list.map((c) => c.id))
               .order('created_at', { ascending: false })
           : ({ data: [] } as any);
         if (lErr) throw lErr;
 
-        const firstByConn = new Map<string, { content: string; created_at: string }>();
+        const firstByConn = new Map<string, { text: string; created_at: string }>();
         (lastMsgs ?? []).forEach((m: any) => {
           if (!firstByConn.has(m.connection_id)) {
-            firstByConn.set(m.connection_id, { content: m.content, created_at: m.created_at });
+            const text = (m.content ?? m.body ?? '') as string;
+            firstByConn.set(m.connection_id, { text, created_at: m.created_at as string });
           }
         });
 
@@ -165,7 +167,7 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
       try {
         const { data, error } = await supabase
           .from('messages')
-          .select('id, sender_id, content, created_at')
+          .select('id, sender_id, content, body, created_at')
           .eq('connection_id', selectedConnId)
           .order('created_at', { ascending: true });
 
@@ -199,7 +201,7 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
           const m = payload.new as any;
           setMessages((prev) => [
             ...prev,
-            { id: m.id, sender_id: m.sender_id, content: m.content, created_at: m.created_at },
+            { id: m.id, sender_id: m.sender_id, content: m.content, body: m.body, created_at: m.created_at },
           ]);
         }
       )
@@ -222,13 +224,25 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
 
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedConnId || !uid) return;
-    const content = newMessage.trim();
+    const text = newMessage.trim();
+
+    // clear optimistically (will be re-added by realtime on success)
     setNewMessage('');
-    const { error } = await supabase
+
+    // Try inserting into `content`; if that column doesn't exist, fallback to `body`
+    let { error } = await supabase
       .from('messages')
-      .insert({ connection_id: selectedConnId, sender_id: uid, content });
+      .insert({ connection_id: selectedConnId, sender_id: uid, content: text });
+
+    if (error && /content.*does not exist/i.test(error.message || '')) {
+      const res2 = await supabase
+        .from('messages')
+        .insert({ connection_id: selectedConnId, sender_id: uid, body: text });
+      error = res2.error ?? null;
+    }
+
     if (error) {
-      setNewMessage(content); // restore so they can retry
+      setNewMessage(text); // restore so they can retry
       toast.error(error.message || 'Could not send message');
     }
   };
@@ -271,7 +285,7 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
                   {convList.map((item) => {
                     const isActive = selectedConnId === item.conn.id;
                     const name = item.other?.first_name || 'User';
-                    const last = item.lastMessage?.content ?? 'Say salam to start the conversation';
+                    const last = item.lastMessage?.text ?? 'Say salam to start the conversation';
                     return (
                       <div
                         key={item.conn.id}
@@ -307,8 +321,9 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
                   <CardTitle className="text-lg text-white">
                     {activeOther?.first_name ? `Conversation with ${activeOther.first_name}` : 'Conversation'}
                   </CardTitle>
-                  <p className="text-sm text-primary">Maintain Islamic etiquette and keep intentions for nikah.</p>
+                  <p className="text-sm theme-text-muted">Maintain Islamic etiquette and keep intentions for nikah.</p>
                 </CardHeader>
+
                 <CardContent className="p-0 flex flex-col h-[450px]">
                   {/* Messages */}
                   <div className="flex-1 p-4 space-y-4 overflow-y-auto">
@@ -319,29 +334,30 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
                     ) : messages.length === 0 ? (
                       <div className="theme-text-muted">No messages yet. Say salam to begin.</div>
                     ) : (
-                      messages.map((message) => (
-                        <div
-                          key={message.id}
-                          className={`flex ${message.sender_id === uid ? 'justify-end' : 'justify-start'}`}
-                        >
-                          <div
-                            className={`max-w-[70%] p-3 rounded-lg ${
-                              message.sender_id === uid
-                                ? 'theme-button text-white'
-                                : 'bg-card text-white border border-border'
-                            }`}
-                          >
-                            <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                            <p
-                              className={`text-xs mt-1 ${
-                                message.sender_id === uid ? 'text-white/70' : 'theme-text-muted'
+                      messages.map((message) => {
+                        const isMine = message.sender_id === uid;
+                        const text = (message.content ?? message.body ?? '').trim();
+                        return (
+                          <div key={message.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
+                            <div
+                              className={`max-w-[70%] p-3 rounded-lg break-words whitespace-pre-wrap ${
+                                isMine
+                                  ? 'theme-button text-white'
+                                  : 'bg-card text-white border border-border'
                               }`}
                             >
-                              {new Date(message.created_at).toLocaleString()}
-                            </p>
+                              <p className="text-sm">{text || '…'}</p>
+                              <p
+                                className={`text-xs mt-1 ${
+                                  isMine ? 'text-white/70' : 'theme-text-muted'
+                                }`}
+                              >
+                                {new Date(message.created_at).toLocaleString()}
+                              </p>
+                            </div>
                           </div>
-                        </div>
-                      ))
+                        );
+                      })
                     )}
                     <div ref={bottomRef} />
                   </div>
@@ -352,7 +368,8 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
                       <Input
                         value={newMessage}
                         onChange={(e) => setNewMessage(e.target.value)}
-                        placeholder="Type your message… (Keep it respectful and marriage-focused)"
+                        placeholder="Type your message…"
+                        className="bg-[rgba(255,255,255,0.06)] text-foreground placeholder-[rgba(248,247,242,.70)]"
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' && !e.shiftKey) {
                             e.preventDefault();
@@ -368,6 +385,9 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
                       >
                         <Send className="h-4 w-4" />
                       </Button>
+                    </div>
+                    <div className="mt-1 text-xs theme-text-muted">
+                      Keep it respectful and marriage-focused.
                     </div>
                   </div>
                 </CardContent>
