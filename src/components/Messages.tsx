@@ -33,8 +33,8 @@ type ConversationItem = {
 type MessageRow = {
   id: string;
   sender_id: string;
-  content?: string | null; // may exist in some schemas
-  body?: string | null;    // fallback column name in other schemas
+  content?: string | null; // some schemas
+  body?: string | null;    // fallback column name
   created_at: string;
   connection_id?: string;
 };
@@ -255,8 +255,7 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
   );
 
   return (
-    // Add extra bottom padding so the fixed Back button never overlaps content
-    <div className="min-h-screen theme-bg p-4 pb-28 md:pb-8">
+    <div className="min-h-screen theme-bg p-4 pb-28 md:pb-10">
       <div className="max-w-6xl mx-auto space-y-4">
         {/* Top back button */}
         <div className="flex items-center justify-between">
@@ -266,7 +265,8 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[600px]">
+        {/* Taller responsive layout so composer sits higher and is always visible */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 min-h-[70vh]">
           {/* Conversations List */}
           <Card className="lg:col-span-1 theme-card">
             <CardHeader>
@@ -315,7 +315,7 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
           </Card>
 
           {/* Chat Area */}
-          <Card className="lg:col-span-2 theme-card">
+          <Card className="lg:col-span-2 theme-card flex flex-col">
             {selectedConnId ? (
               <>
                 <CardHeader className="border-b border-border">
@@ -325,9 +325,8 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
                   <p className="text-sm theme-text-muted">Maintain Islamic etiquette and keep intentions for nikah.</p>
                 </CardHeader>
 
-                {/* Make the inner area a column: messages scroll, input stays visible */}
-                <CardContent className="p-0 flex flex-col h-[450px]">
-                  {/* Messages (scrollable) */}
+                {/* Messages (scrolls) + Composer (sticky & raised) */}
+                <CardContent className="p-0 flex-1 flex flex-col min-h-[60vh]">
                   <div className="flex-1 p-4 space-y-4 overflow-y-auto">
                     {loadingMsgs ? (
                       <div className="flex items-center gap-2 theme-text-muted">
@@ -358,14 +357,15 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
                     <div ref={bottomRef} />
                   </div>
 
-                  {/* Composer (sticky inside card) */}
-                  <div className="sticky bottom-0 border-t border-border p-3 bg-[rgba(31,41,55,0.9)] backdrop-blur z-10">
+                  {/* Raised, high-contrast composer (sits ABOVE the very bottom) */}
+                  <div className="sticky bottom-3 mx-3 mb-3 rounded-xl bg-[rgba(31,41,55,0.95)] border border-border shadow-lg backdrop-blur p-3 z-10">
                     <div className="flex gap-2">
                       <Input
                         value={newMessage}
                         onChange={(e) => setNewMessage(e.target.value)}
                         placeholder="Type your message…"
-                        className="bg-[rgba(255,255,255,0.06)] text-foreground placeholder-[rgba(248,247,242,.70)]"
+                        aria-label="Message"
+                        className="h-12 text-base bg-[rgba(255,255,255,0.08)] text-foreground placeholder-[rgba(248,247,242,.70)] border-border"
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' && !e.shiftKey) {
                             e.preventDefault();
@@ -375,19 +375,19 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
                       />
                       <Button
                         onClick={handleSendMessage}
-                        className="theme-button"
+                        className="theme-button h-12 px-5"
                         aria-label="Send message"
                         disabled={!newMessage.trim()}
                       >
-                        <Send className="h-4 w-4" />
+                        <Send className="h-4 w-4 mr-2" />
+                        Send
                       </Button>
                     </div>
-                    <div className="mt-1 text-xs theme-text-muted">Keep it respectful and marriage-focused.</div>
                   </div>
                 </CardContent>
               </>
             ) : (
-              <CardContent className="flex items-center justify-center h-[500px]">
+              <CardContent className="flex items-center justify-center min-h-[60vh]">
                 <div className="text-center">
                   <MessageSquare className="h-12 w-12 theme-text-muted mx-auto mb-4" />
                   <h3 className="text-lg font-medium text-white mb-2">Select a conversation</h3>
