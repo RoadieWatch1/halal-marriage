@@ -1,166 +1,214 @@
-import React, { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Badge } from '@/components/ui/badge';
-import { Heart, MessageSquare, Shield, Settings, Users } from 'lucide-react';
+import React, { useMemo } from "react";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import {
+  Eye,
+  UserPlus,
+  MessageSquare,
+  CheckCircle2,
+  Settings2,
+  Search,
+  Edit3,
+} from "lucide-react";
+
+type Section = "dashboard" | "search" | "messages" | "profile";
 
 interface DashboardProps {
   user: any;
-  onNavigate: (section: string) => void;
+  onNavigate: (section: Section) => void;
+}
+
+/** Naive completion %: count a few meaningful fields */
+function estimateCompletion(u: any): number {
+  if (!u) return 0;
+  const fields = [
+    u.firstName,
+    u.age,
+    u.city,
+    u.state,
+    u.gender,
+    u.occupation,
+    u.education,
+    u.prayerStatus,
+    u.maritalStatus,
+    u.bio,
+  ];
+  const photosCount = Array.isArray(u.photos) ? Math.min(u.photos.length, 3) : 0; // up to 3 credit
+  const base = fields.filter(Boolean).length + photosCount;
+  const total = fields.length + 3;
+  const pct = Math.round((base / total) * 100);
+  return Math.max(0, Math.min(100, pct));
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ user, onNavigate }) => {
-  const [activeTab, setActiveTab] = useState('overview');
+  const firstName = user?.firstName || "Friend";
+  const completion = useMemo(() => estimateCompletion(user), [user]);
 
-  const stats = {
-    profileViews: 12,
-    connectionRequests: 3,
-    activeChats: 1,
-    profileCompletion: 85
-  };
+  // You can wire real data later; placeholders for now
+  const profileViews = 12;
+  const pendingRequests = 3;
+  const activeConvos = 1;
 
   return (
-    <div className="min-h-screen theme-bg p-4">
-      <div className="max-w-6xl mx-auto space-y-6">
-        <div className="theme-card p-6">
-          <h2 className="text-2xl font-bold text-white mb-2">
-            Assalamu Alaikum, {user.firstName || 'Brother/Sister'}!
-          </h2>
-          <p className="theme-text-body">
-            May Allah guide you to your righteous spouse. Remember, this platform is for halal marriage only.
+    <div className="max-w-6xl mx-auto p-4 md:p-6 space-y-6">
+      {/* Header */}
+      <header className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold text-foreground">
+            Assalamu Alaikum, {firstName}!
+          </h1>
+          <p className="theme-text-muted mt-1">
+            May Allah guide you to your righteous spouse. This platform is for halal marriage only.
           </p>
         </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="matches">Potential Matches</TabsTrigger>
-          <TabsTrigger value="messages">Messages</TabsTrigger>
-          <TabsTrigger value="settings">Settings</TabsTrigger>
-        </TabsList>
+        <div className="hidden md:flex gap-2">
+          <Button
+            className="btn-secondary"
+            onClick={() => onNavigate("profile")}
+            title="Edit Profile"
+          >
+            <Edit3 className="h-4 w-4 mr-2" />
+            Edit Profile
+          </Button>
+          <Button
+            className="btn-secondary"
+            onClick={() => onNavigate("search")}
+            title="Find Matches"
+          >
+            <Search className="h-4 w-4 mr-2" />
+            Find Matches
+          </Button>
+          <Button
+            className="btn-secondary"
+            onClick={() => onNavigate("messages")}
+            title="View Messages"
+          >
+            <MessageSquare className="h-4 w-4 mr-2" />
+            Messages
+          </Button>
+        </div>
+      </header>
 
-        <TabsContent value="overview" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Profile Views</CardTitle>
-                <Users className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.profileViews}</div>
-                <p className="text-xs text-muted-foreground">This week</p>
-              </CardContent>
-            </Card>
+      {/* Stats row */}
+      <section className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <StatCard
+          icon={<Eye className="h-4 w-4" />}
+          label="Profile Views"
+          value={profileViews}
+          hint="This week"
+        />
+        <StatCard
+          icon={<UserPlus className="h-4 w-4" />}
+          label="Connection Requests"
+          value={pendingRequests}
+          hint="Pending review"
+        />
+        <StatCard
+          icon={<MessageSquare className="h-4 w-4" />}
+          label="Active Conversations"
+          value={activeConvos}
+          hint="Ongoing"
+        />
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Connection Requests</CardTitle>
-                <Heart className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.connectionRequests}</div>
-                <p className="text-xs text-muted-foreground">Pending review</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Active Conversations</CardTitle>
-                <MessageSquare className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.activeChats}</div>
-                <p className="text-xs text-muted-foreground">Ongoing</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Profile Complete</CardTitle>
-                <Shield className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.profileCompletion}%</div>
-                <p className="text-xs text-muted-foreground">
-                  {stats.profileCompletion < 100 && 'Complete for better matches'}
-                </p>
-              </CardContent>
-            </Card>
+        <Card className="theme-card p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4" />
+              <span className="text-sm theme-text-muted">Profile Complete</span>
+            </div>
+            <span className="text-sm font-semibold text-foreground">{completion}%</span>
           </div>
+          <div className="mt-2 h-2 rounded-full bg-[rgba(255,255,255,.08)]">
+            <div
+              className="h-2 rounded-full"
+              style={{
+                width: `${completion}%`,
+                background:
+                  "linear-gradient(180deg, var(--teal-600), var(--teal-700))",
+              }}
+            />
+          </div>
+          <p className="mt-2 text-xs theme-text-muted">
+            Complete your profile for better matches.
+          </p>
+        </Card>
+      </section>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Quick Actions</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-wrap gap-2">
-              <Button onClick={() => onNavigate('profile')} variant="outline">
-                Edit Profile
-              </Button>
-              <Button onClick={() => onNavigate('search')} className="theme-button">
-                Find Matches
-              </Button>
-              <Button onClick={() => onNavigate('messages')} variant="outline">
-                View Messages
-              </Button>
-            </CardContent>
-          </Card>
-        </TabsContent>
+      {/* Quick Actions */}
+      <section className="theme-card p-4 md:p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-semibold text-foreground">Quick Actions</h2>
+          <Settings2 className="h-4 w-4 theme-text-muted" />
+        </div>
 
-        <TabsContent value="matches">
-          <Card>
-            <CardHeader>
-              <CardTitle>Potential Matches</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-center theme-text-muted py-8">
-                Use the search feature to find compatible matches based on your preferences.
-              </p>
-              <Button onClick={() => onNavigate('search')} className="w-full theme-button">
-                Start Searching
-              </Button>
-            </CardContent>
-          </Card>
-        </TabsContent>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <Button className="btn-primary w-full" onClick={() => onNavigate("profile")}>
+            <Edit3 className="h-4 w-4 mr-2" />
+            Edit Profile
+          </Button>
+          <Button className="btn-primary w-full" onClick={() => onNavigate("search")}>
+            <Search className="h-4 w-4 mr-2" />
+            Find Matches
+          </Button>
+          <Button className="btn-primary w-full" onClick={() => onNavigate("messages")}>
+            <MessageSquare className="h-4 w-4 mr-2" />
+            View Messages
+          </Button>
+        </div>
+      </section>
 
-        <TabsContent value="messages">
-          <Card>
-            <CardHeader>
-              <CardTitle>Messages</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-center theme-text-muted py-8">
-                No active conversations yet. Connect with potential matches to start meaningful conversations.
-              </p>
-            </CardContent>
-          </Card>
-        </TabsContent>
+      {/* Guidance blocks (optional, calm & simple) */}
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card className="theme-card p-4 md:p-5">
+          <h3 className="text-base font-semibold text-foreground mb-1">Potential Matches</h3>
+          <p className="text-sm theme-text-muted mb-4">
+            Browse opposite-gender profiles aligned with your values.
+          </p>
+          <Button className="btn-secondary" onClick={() => onNavigate("search")}>
+            Explore matches
+          </Button>
+        </Card>
 
-        <TabsContent value="settings">
-          <Card>
-            <CardHeader>
-              <CardTitle>Account Settings</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Button onClick={() => onNavigate('profile')} variant="outline" className="w-full">
-                Edit Profile
-              </Button>
-              <Button variant="outline" className="w-full">
-                Privacy Settings
-              </Button>
-              <Button variant="outline" className="w-full">
-                Notification Preferences
-              </Button>
-              <Button variant="destructive" className="w-full">
-                Pause Profile
-              </Button>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-      </div>
+        <Card className="theme-card p-4 md:p-5">
+          <h3 className="text-base font-semibold text-foreground mb-1">Messages</h3>
+          <p className="text-sm theme-text-muted mb-4">
+            Continue conversations respectfully. Involve family or wali as needed.
+          </p>
+          <Button className="btn-secondary" onClick={() => onNavigate("messages")}>
+            Open inbox
+          </Button>
+        </Card>
+      </section>
     </div>
   );
 };
+
+function StatCard({
+  icon,
+  label,
+  value,
+  hint,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: number | string;
+  hint?: string;
+}) {
+  return (
+    <Card className="theme-card p-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center justify-center h-8 w-8 rounded-lg bg-[rgba(255,255,255,.06)] border border-[rgba(255,255,255,.08)]">
+            {icon}
+          </span>
+          <span className="text-sm theme-text-muted">{label}</span>
+        </div>
+        <span className="text-lg font-semibold text-foreground">{value}</span>
+      </div>
+      {hint ? <p className="mt-2 text-xs theme-text-muted">{hint}</p> : null}
+    </Card>
+  );
+}
 
 export default Dashboard;
