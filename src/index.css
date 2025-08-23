@@ -11,7 +11,7 @@
     --teal-600: #0d9488; /* primary */
     --teal-700: #0f766e;
 
-    --gold-500: #d4af37; /* warm gold */
+    --gold-500: #d4af37; /* warm gold (kept for accents/buttons if needed) */
     --gold-600: #c99c1a;
 
     --ivory: #f8f7f2;
@@ -49,18 +49,23 @@
 
     --border: rgba(255, 255, 255, 0.08);
     --input: var(--charcoal-800);
-    --ring: var(--gold-500);
+    --ring: var(--teal-600);
 
     --radius: 0.75rem;
   }
 
   * { @apply border-border; }
 
-  /* Make all titles/headings warm gold */
-  h1, h2, h3, h4, h5, h6 { color: var(--gold-500); }
+  /* Titles: black with a soft teal glow BELOW */
+  h1, h2, h3, h4, h5, h6 {
+    color: #0a0a0a; /* black titles */
+    text-shadow:
+      0 3px 10px rgba(13,148,136,0.60),
+      0 1px 3px rgba(13,148,136,0.35);
+  }
 
-  /* Labels (field titles) warm gold */
-  label, .label, .form-label { color: var(--gold-500) !important; }
+  /* Optional: labels can stay neutral (no gold) */
+  label, .label, .form-label { color: var(--ivory) !important; }
 
   body {
     @apply bg-background text-foreground font-sans;
@@ -78,7 +83,7 @@
   /* App background section */
   .theme-bg {
     background:
-      radial-gradient(1000px 500px at 85% 15%, rgba(212,175,55,.10), transparent 60%),
+      radial-gradient(1000px 500px at 85% 15%, rgba(13,148,136,.10), transparent 60%),
       linear-gradient(135deg, #0e1a1a 0%, #0f2526 40%, var(--charcoal-900) 100%);
   }
 
@@ -89,6 +94,14 @@
     border-color: var(--border);
     backdrop-filter: blur(8px);
     color: var(--foreground); /* ensure default text inside cards is ivory */
+  }
+
+  /* Keep headings black even inside cards */
+  .theme-card :where(h1,h2,h3,h4,h5,h6) {
+    color: #0a0a0a !important;
+    text-shadow:
+      0 3px 10px rgba(13,148,136,0.60),
+      0 1px 3px rgba(13,148,136,0.35);
   }
 
   /* Primary buttons (teal) */
@@ -105,7 +118,6 @@
     transform: translateY(-1px);
     box-shadow:
       0 14px 22px -10px rgba(13, 148, 136, 0.75),
-      0 0 0 2px rgba(212,175,55,.35),
       inset 0 1px 0 0 rgba(255,255,255,.2);
   }
   .theme-button:active { transform: translateY(0); }
@@ -116,7 +128,6 @@
 
   /* Utility accents */
   .text-ivory   { color: var(--ivory); }
-  .text-gold    { color: var(--gold-500); }
   .bg-charcoal  { background-color: var(--charcoal-900); }
 }
 
@@ -125,9 +136,9 @@
    ========================= */
 @layer components {
   .hero-overlay {
+    /* removed gold vignette; keep subtle teal */
     background:
       radial-gradient(1000px 500px at 80% 20%, rgba(13, 148, 136, 0.20), transparent 60%),
-      radial-gradient(800px 400px at 15% 85%, rgba(212, 175, 55, 0.12), transparent 60%),
       linear-gradient(to bottom, rgba(17, 24, 39, 0.65), rgba(17, 24, 39, 0.55) 40%, rgba(17, 24, 39, 0.75));
   }
 
@@ -144,7 +155,6 @@
     transform: translateY(-1px);
     box-shadow:
       0 14px 22px -10px rgba(13, 148, 136, 0.75),
-      0 0 0 2px rgba(212, 175, 55, .4),
       inset 0 1px 0 0 rgba(255,255,255,.2);
   }
 
@@ -164,7 +174,6 @@
   }
   .btn-secondary:hover {
     border-color: rgba(255,255,255,.2);
-    box-shadow: 0 0 0 2px rgba(212, 175, 55, .35);
     transform: translateY(-1px);
   }
 
@@ -177,18 +186,15 @@
     width: 0.5rem;
     height: 0.5rem;
     border-radius: 9999px;
-    background: var(--gold-500);
-    box-shadow: 0 0 0 2px rgba(255,255,255,.2);
+    background: var(--teal-600);
+    box-shadow: 0 0 0 2px rgba(255,255,255,.15);
   }
 }
 
 /* =========================
    Inputs / Selects / Textareas
-   Make all field text ivory (not black),
-   placeholders softer ivory, borders/hover/focus tuned.
    ========================= */
 @layer components {
-  /* Base fields */
   input[type="text"],
   input[type="email"],
   input[type="number"],
@@ -197,35 +203,30 @@
   input[type="url"],
   textarea,
   select {
-    color: var(--ivory) !important;         /* field text */
-    background-color: rgba(255,255,255,0.06); /* subtle panel so ivory reads clearly */
+    color: var(--ivory) !important;           /* readable field text */
+    background-color: rgba(255,255,255,0.06); /* subtle panel */
     border: 1px solid var(--border);
   }
   input::placeholder,
   textarea::placeholder {
     color: var(--ivory-70);
   }
-
-  /* Focus state */
   input:focus,
   textarea:focus,
   select:focus {
     outline: none;
-    border-color: var(--gold-500);
+    border-color: var(--teal-600);
     box-shadow:
-      0 0 0 2px rgba(212,175,55,0.25),
+      0 0 0 2px rgba(13,148,136,0.25),
       0 10px 24px -12px rgba(13,148,136,0.4);
   }
-
-  /* Disabled state */
   input:disabled,
   textarea:disabled,
   select:disabled {
     opacity: .7;
     color: var(--ivory-70) !important;
   }
-
-  /* shadcn SelectTrigger is a button[role="combobox"] */
+  /* shadcn SelectTrigger */
   button[role="combobox"] {
     color: var(--ivory) !important;
     background-color: rgba(255,255,255,0.06);
@@ -235,10 +236,19 @@
   button[role="combobox"][data-placeholder] {
     color: var(--ivory-70) !important;
   }
-
-  /* common input height from shadcn (just in case) */
   input, textarea, select, button[role="combobox"] {
     min-height: 2.5rem; /* h-10 */
     border-radius: 0.75rem; /* match --radius */
   }
+}
+
+/* =========================
+   Prevent accidental black text inside cards,
+   but let headings stay black
+   ========================= */
+@layer utilities {
+  .theme-card :where(.text-black, .text-gray-900, .text-slate-900, .text-neutral-900) {
+    color: var(--foreground) !important; /* ivory for body text */
+  }
+  /* headlings inside cards stay black per .theme-card heading rule above */
 }
