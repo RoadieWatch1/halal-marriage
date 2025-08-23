@@ -15,11 +15,14 @@
     --gold-600: #c99c1a;
 
     --ivory: #f8f7f2;
+    --ivory-70: rgba(248, 247, 242, 0.7);
+    --ivory-85: rgba(248, 247, 242, 0.85);
+
     --charcoal-900: #111827; /* background */
     --charcoal-800: #1f2937; /* cards/popovers */
     --charcoal-700: #374151; /* secondary/muted */
 
-    /* Shadcn/Tailwind mapped tokens */
+    /* shadcn variables */
     --background: var(--charcoal-900);
     --foreground: var(--ivory);
 
@@ -53,9 +56,14 @@
 
   * { @apply border-border; }
 
+  /* Make all titles/headings warm gold */
+  h1, h2, h3, h4, h5, h6 { color: var(--gold-500); }
+
+  /* Labels (field titles) warm gold */
+  label, .label, .form-label { color: var(--gold-500) !important; }
+
   body {
     @apply bg-background text-foreground font-sans;
-    /* Charcoal base with a subtle teal sweep */
     background:
       radial-gradient(1200px 600px at 10% 90%, rgba(13,148,136,.12), transparent 60%),
       linear-gradient(135deg, #0e1a1a 0%, #0f2526 40%, var(--charcoal-900) 100%);
@@ -77,9 +85,10 @@
   /* Cards */
   .theme-card {
     @apply rounded-lg shadow-lg border;
-    background: rgba(31, 41, 55, 0.6);                /* var(--charcoal-800)/60 */
+    background: rgba(31, 41, 55, 0.6);
     border-color: var(--border);
     backdrop-filter: blur(8px);
+    color: var(--foreground); /* ensure default text inside cards is ivory */
   }
 
   /* Primary buttons (teal) */
@@ -109,79 +118,6 @@
   .text-ivory   { color: var(--ivory); }
   .text-gold    { color: var(--gold-500); }
   .bg-charcoal  { background-color: var(--charcoal-900); }
-}
-
-/* =========================
-   Inputs & form controls — higher contrast
-   (No markup changes needed)
-   ========================= */
-@layer components {
-  /* Base look for inputs, textareas, selects and shadcn select trigger (role=combobox) */
-  input:not([type="checkbox"]):not([type="radio"]),
-  textarea,
-  select,
-  button[role="combobox"] {
-    color: var(--ivory);
-    caret-color: var(--ivory);
-    background: rgba(31, 41, 55, 0.85);
-    border: 1px solid var(--border);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
-  }
-
-  /* Inside cards, enforce contrast even if a component defaults to dark text */
-  .theme-card input:not([type="checkbox"]):not([type="radio"]),
-  .theme-card textarea,
-  .theme-card select,
-  .theme-card button[role="combobox"] {
-    color: var(--ivory) !important;
-    background: rgba(31, 41, 55, 0.85);
-  }
-
-  input::placeholder,
-  textarea::placeholder {
-    color: rgba(248, 247, 242, 0.55);
-    opacity: 1; /* Safari */
-  }
-
-  /* Focus glow (teal + gold) */
-  input:focus,
-  textarea:focus,
-  select:focus,
-  button[role="combobox"]:focus,
-  button[role="combobox"][data-state="open"] {
-    outline: none;
-    border-color: rgba(212,175,55,.55);
-    box-shadow:
-      0 0 0 2px rgba(212,175,55,.35),
-      0 12px 20px -12px rgba(13,148,136,.45),
-      inset 0 1px 0 rgba(255,255,255,.12);
-  }
-
-  /* Disabled state readability */
-  input:disabled,
-  textarea:disabled,
-  select:disabled,
-  button[role="combobox"][aria-disabled="true"] {
-    color: rgba(248,247,242,.6);
-    background: rgba(31,41,55,.5);
-  }
-
-  /* Optional: wrap groups with a soft glow background */
-  .form-glow {
-    background: linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,.01));
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    box-shadow:
-      inset 0 1px 0 rgba(255,255,255,.06),
-      0 10px 24px -18px rgba(13,148,136,.6),
-      0 0 0 1px rgba(212,175,55,.18);
-  }
-  .form-glow:focus-within {
-    box-shadow:
-      inset 0 1px 0 rgba(255,255,255,.06),
-      0 18px 30px -16px rgba(13,148,136,.6),
-      0 0 0 2px rgba(212,175,55,.35);
-  }
 }
 
 /* =========================
@@ -243,5 +179,66 @@
     border-radius: 9999px;
     background: var(--gold-500);
     box-shadow: 0 0 0 2px rgba(255,255,255,.2);
+  }
+}
+
+/* =========================
+   Inputs / Selects / Textareas
+   Make all field text ivory (not black),
+   placeholders softer ivory, borders/hover/focus tuned.
+   ========================= */
+@layer components {
+  /* Base fields */
+  input[type="text"],
+  input[type="email"],
+  input[type="number"],
+  input[type="password"],
+  input[type="tel"],
+  input[type="url"],
+  textarea,
+  select {
+    color: var(--ivory) !important;         /* field text */
+    background-color: rgba(255,255,255,0.06); /* subtle panel so ivory reads clearly */
+    border: 1px solid var(--border);
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--ivory-70);
+  }
+
+  /* Focus state */
+  input:focus,
+  textarea:focus,
+  select:focus {
+    outline: none;
+    border-color: var(--gold-500);
+    box-shadow:
+      0 0 0 2px rgba(212,175,55,0.25),
+      0 10px 24px -12px rgba(13,148,136,0.4);
+  }
+
+  /* Disabled state */
+  input:disabled,
+  textarea:disabled,
+  select:disabled {
+    opacity: .7;
+    color: var(--ivory-70) !important;
+  }
+
+  /* shadcn SelectTrigger is a button[role="combobox"] */
+  button[role="combobox"] {
+    color: var(--ivory) !important;
+    background-color: rgba(255,255,255,0.06);
+    border: 1px solid var(--border);
+  }
+  button[role="combobox"][data-placeholder="true"],
+  button[role="combobox"][data-placeholder] {
+    color: var(--ivory-70) !important;
+  }
+
+  /* common input height from shadcn (just in case) */
+  input, textarea, select, button[role="combobox"] {
+    min-height: 2.5rem; /* h-10 */
+    border-radius: 0.75rem; /* match --radius */
   }
 }
