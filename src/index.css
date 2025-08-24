@@ -2,56 +2,86 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ===== Base tokens (calm, minimal) ===== */
+/* =========================
+   Base tokens (calm, minimal)
+   ========================= */
 @layer base {
   :root {
+    /* Brand accents */
     --teal-600: #0d9488;
     --teal-700: #0f766e;
+
+    /* Readable background (works with black & white text) */
+    --app-bg: #5F7A78; /* mid teal */
 
     --ivory: #f8f7f2;
     --ivory-70: rgba(248,247,242,.70);
 
-    --charcoal-900: #111827; /* page bg */
-    --charcoal-850: #151f2a; /* subtle sweep */
+    /* Surfaces */
+    --charcoal-900: #111827; /* deep charcoal for contrasty surfaces */
+    --charcoal-850: #151f2a;
     --charcoal-800: #1f2937; /* cards */
 
-    --background: var(--charcoal-900);
+    /* Theme variables */
+    --background: var(--app-bg);
     --foreground: var(--ivory);
 
     --card: var(--charcoal-800);
     --card-foreground: var(--ivory);
 
-    --border: rgba(255,255,255,.08);
+    --border: rgba(0, 0, 0, 0.25); /* slightly darker on mid teal */
     --input: var(--charcoal-800);
     --ring: var(--teal-600);
 
     --radius: .75rem;
+
+    /* Gold frame accents */
+    --gold-500: #d4af37;
+    --gold-300: #f4e3a1;
   }
 
   * { @apply border-border; }
 
   body {
     @apply bg-background text-foreground font-sans;
-    background:
-      radial-gradient(1100px 500px at 15% 85%, rgba(13,148,136,.08), transparent 60%),
-      linear-gradient(135deg, var(--charcoal-850), var(--charcoal-900));
+    /* Keep it flat + modern; no heavy gradients */
+    background: var(--app-bg);
     min-height: 100vh;
+  }
+
+  /* Shiny gold thin border around the entire page */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 9999;
+    /* Thin, elegant gold frame with a soft sheen */
+    box-shadow:
+      inset 0 0 0 1px var(--gold-500),
+      inset 0 0 20px rgba(212,175,55,0.12);
+    /* Subtle gradient shimmer along the edges */
+    background:
+      linear-gradient(45deg, rgba(244,227,161,0.18), rgba(212,175,55,0.18)) border-box;
+    /* Keep transparent so content isn't covered */
+    background-clip: padding-box;
   }
 }
 
-/* ===== Components ===== */
+/* =========================
+   Components
+   ========================= */
 @layer components {
-  /* Sections */
+  /* Sections (transparent so body color shows) */
   .theme-bg {
-    background:
-      linear-gradient(135deg, var(--charcoal-850), var(--charcoal-900));
+    background: transparent;
   }
 
-  /* Glass card */
+  /* Glassy card on mid-teal background */
   .theme-card {
     @apply rounded-xl border shadow-lg;
-    background: rgba(31,41,55,.55); /* charcoal-800 / 55% */
-    border-color: var(--border);
+    background: rgba(17, 24, 39, 0.65); /* charcoal overlay for contrast */
+    border-color: rgba(0,0,0,0.25);
     backdrop-filter: blur(8px);
   }
 
@@ -60,31 +90,32 @@
     @apply inline-flex items-center justify-center rounded-xl px-6 py-3 font-semibold;
     color: var(--ivory);
     background: linear-gradient(180deg, var(--teal-600), var(--teal-700));
-    border: 1px solid rgba(255,255,255,.08);
-    transition: transform .15s ease, box-shadow .15s ease;
+    border: 1px solid rgba(0,0,0,.2);
+    transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
   }
-  .btn-primary:hover { transform: translateY(-1px); }
+  .btn-primary:hover { transform: translateY(-1px); filter: brightness(1.03); }
   .btn-primary:active { transform: translateY(0); }
 
   /* Secondary (soft outline) */
   .btn-secondary {
     @apply inline-flex items-center justify-center rounded-xl px-5 py-3 font-semibold;
     color: var(--ivory);
-    background: rgba(255,255,255,.04);
-    border: 1px solid rgba(255,255,255,.10);
-    transition: transform .15s ease, border-color .15s ease;
+    background: rgba(0,0,0,.18);
+    border: 1px solid rgba(0,0,0,.28);
+    transition: transform .15s ease, border-color .15s ease, filter .15s ease;
     text-decoration: none;
   }
   .btn-secondary:hover {
     transform: translateY(-1px);
-    border-color: rgba(255,255,255,.18);
+    filter: brightness(1.02);
+    border-color: rgba(0,0,0,.4);
   }
 
   /* Muted/body text helpers */
   .theme-text-muted { color: var(--ivory-70); }
-  .theme-text-body  { color: #f3f4f6; }
+  .theme-text-body  { color: #ffffff; }
 
-  /* Inputs / selects / textareas: ensure ivory text, clean focus */
+  /* Inputs / selects / textareas: high contrast on mid-teal */
   input[type="text"],
   input[type="email"],
   input[type="number"],
@@ -94,8 +125,8 @@
   textarea,
   select {
     color: var(--ivory) !important;
-    background-color: rgba(255,255,255,0.06);
-    border: 1px solid var(--border);
+    background-color: rgba(0,0,0,0.18);
+    border: 1px solid rgba(0,0,0,0.28);
     min-height: 2.5rem; /* h-10 */
     border-radius: var(--radius);
   }
@@ -110,8 +141,8 @@
   /* shadcn SelectTrigger (button[role=combobox]) */
   button[role="combobox"] {
     color: var(--ivory) !important;
-    background-color: rgba(255,255,255,0.06);
-    border: 1px solid var(--border);
+    background-color: rgba(0,0,0,0.18);
+    border: 1px solid rgba(0,0,0,0.28);
     min-height: 2.5rem;
     border-radius: var(--radius);
   }
@@ -119,9 +150,15 @@
   button[role="combobox"][data-placeholder] {
     color: var(--ivory-70) !important;
   }
+
+  /* Optional helpers when you explicitly want black/white text atop the mid teal */
+  .text-on-bg-dark  { color: #000; }
+  .text-on-bg-light { color: #fff; }
 }
 
-/* ===== Hero helpers (subtle overlay, no glows) ===== */
+/* =========================
+   Hero helpers (subtle overlay, no glows)
+   ========================= */
 @layer components {
   .hero-image {
     @apply absolute inset-0 w-full h-full object-cover;
@@ -129,6 +166,6 @@
   }
   .hero-overlay {
     @apply absolute inset-0;
-    background: linear-gradient(to bottom, rgba(17,24,39,.50), rgba(17,24,39,.70));
+    background: linear-gradient(to bottom, rgba(17,24,39,.40), rgba(17,24,39,.60));
   }
 }
