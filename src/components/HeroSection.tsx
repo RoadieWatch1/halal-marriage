@@ -1,21 +1,21 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
-import { UserPlus, ShieldCheck, MessagesSquare, Heart } from "lucide-react";
+import { UserPlus, ShieldCheck, MessageSquare, Heart } from "lucide-react";
 
 interface HeroSectionProps {
   onGetStarted: () => void;
 }
 
 /**
- * Clean hero + "How it works" row (no color glows; calm palette).
- * Uses /public/hero.jpg — add your hero image as public/hero.jpg.
+ * Clean hero + "How it works" row (calm palette).
+ * Put your image at /public/hero.jpg so <img src="/hero.jpg" /> works.
  */
 const HeroSection: React.FC<HeroSectionProps> = ({ onGetStarted }) => {
   return (
     <div className="theme-bg">
       {/* HERO */}
-      <section className="relative min-h-[72vh] w-full">
-        {/* Background image (replace /hero.jpg with your file if needed) */}
+      <section className="hero-wrap relative min-h-[72vh] w-full">
+        {/* Background image */}
         <img
           src="/hero.jpg"
           alt="American Muslims for Marriage"
@@ -25,7 +25,7 @@ const HeroSection: React.FC<HeroSectionProps> = ({ onGetStarted }) => {
         />
         <div className="hero-overlay" />
 
-        <div className="relative z-10 max-w-6xl mx-auto px-4 py-20 md:py-28 flex items-center">
+        <div className="hero-content max-w-6xl mx-auto px-4 py-20 md:py-28 flex items-center">
           <div className="max-w-3xl">
             <p className="text-sm uppercase tracking-wider theme-text-muted mb-3">
               AM4M • Halal • Secure • Family-Oriented
@@ -39,12 +39,7 @@ const HeroSection: React.FC<HeroSectionProps> = ({ onGetStarted }) => {
             </p>
 
             <div className="flex flex-col sm:flex-row gap-3">
-              {/* shadcn Button gets our look via extra classes */}
-              <Button
-                onClick={onGetStarted}
-                className="btn-primary"
-                size="lg"
-              >
+              <Button onClick={onGetStarted} className="btn-primary" size="lg">
                 Begin Your Journey
               </Button>
 
@@ -70,7 +65,7 @@ const HeroSection: React.FC<HeroSectionProps> = ({ onGetStarted }) => {
             desc="Opposite-gender visibility, modest media, and admin oversight."
           />
           <HowCard
-            icon={<MessagesSquare className="h-5 w-5" />}
+            icon={<MessageSquare className="h-5 w-5" />}
             title="Connect mindfully"
             desc="Request to connect, chat, and optionally involve your wali/family."
           />

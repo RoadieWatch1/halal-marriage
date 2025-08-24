@@ -2,86 +2,83 @@
 @tailwind components;
 @tailwind utilities;
 
-/* =========================
-   Base tokens (calm, minimal)
-   ========================= */
+/* ===== Base tokens (calm, minimal) ===== */
 @layer base {
   :root {
-    /* Brand accents */
     --teal-600: #0d9488;
     --teal-700: #0f766e;
-
-    /* Readable background (works with black & white text) */
-    --app-bg: #5F7A78; /* mid teal */
 
     --ivory: #f8f7f2;
     --ivory-70: rgba(248,247,242,.70);
 
-    /* Surfaces */
-    --charcoal-900: #111827; /* deep charcoal for contrasty surfaces */
-    --charcoal-850: #151f2a;
-    --charcoal-800: #1f2937; /* cards */
+    /* Darkened background tones */
+    --charcoal-900: #0f1822;  /* a notch darker than #111827 */
+    --charcoal-880: #0c141d;  /* deeper base */
+    --charcoal-850: #131c26;  /* subtle sweep */
+    --charcoal-800: #1f2937;  /* cards */
 
-    /* Theme variables */
-    --background: var(--app-bg);
+    /* Gold for the frame */
+    --gold-500: #d4af37;
+
+    --background: var(--charcoal-900);
     --foreground: var(--ivory);
 
     --card: var(--charcoal-800);
     --card-foreground: var(--ivory);
 
-    --border: rgba(0, 0, 0, 0.25); /* slightly darker on mid teal */
+    --border: rgba(255,255,255,.08);
     --input: var(--charcoal-800);
     --ring: var(--teal-600);
 
     --radius: .75rem;
-
-    /* Gold frame accents */
-    --gold-500: #d4af37;
-    --gold-300: #f4e3a1;
   }
 
   * { @apply border-border; }
 
   body {
     @apply bg-background text-foreground font-sans;
-    /* Keep it flat + modern; no heavy gradients */
-    background: var(--app-bg);
+    /* Darker base + softer teal sweep */
+    background:
+      radial-gradient(1100px 500px at 15% 85%, rgba(13,148,136,.06), transparent 60%),
+      linear-gradient(135deg, var(--charcoal-880), var(--charcoal-900));
     min-height: 100vh;
   }
 
-  /* Shiny gold thin border around the entire page */
-  body::after {
-    content: '';
+  /* Thin, shiny gold frame brought inward & slightly thicker */
+  body::before {
+    content: "";
     position: fixed;
-    inset: 0;
+    inset: 14px;                    /* bring it in a bit */
+    border: 2px solid rgba(212,175,55,0.85);
+    border-radius: 14px;
     pointer-events: none;
-    z-index: 9999;
-    /* Thin, elegant gold frame with a soft sheen */
+    z-index: 60;                    /* above content, but transparent */
     box-shadow:
-      inset 0 0 0 1px var(--gold-500),
-      inset 0 0 20px rgba(212,175,55,0.12);
-    /* Subtle gradient shimmer along the edges */
-    background:
-      linear-gradient(45deg, rgba(244,227,161,0.18), rgba(212,175,55,0.18)) border-box;
-    /* Keep transparent so content isn't covered */
-    background-clip: padding-box;
+      0 0 0 1px rgba(212,175,55,0.25), /* subtle secondary stroke */
+      0 4px 18px rgba(212,175,55,0.12); /* gentle sheen */
+  }
+
+  @media (max-width: 640px) {
+    body::before {
+      inset: 10px;
+      border-width: 1.5px;
+      border-radius: 12px;
+    }
   }
 }
 
-/* =========================
-   Components
-   ========================= */
+/* ===== Components ===== */
 @layer components {
-  /* Sections (transparent so body color shows) */
+  /* Sections */
   .theme-bg {
-    background: transparent;
+    background: linear-gradient(135deg, var(--charcoal-850), var(--charcoal-900));
   }
 
-  /* Glassy card on mid-teal background */
+  /* Glass card */
   .theme-card {
     @apply rounded-xl border shadow-lg;
-    background: rgba(17, 24, 39, 0.65); /* charcoal overlay for contrast */
-    border-color: rgba(0,0,0,0.25);
+    background: rgba(31,41,55,.55); /* charcoal-800 / 55% */
+    border-color: var(--border);
     backdrop-filter: blur(8px);
   }
 
@@ -90,32 +87,31 @@
     @apply inline-flex items-center justify-center rounded-xl px-6 py-3 font-semibold;
     color: var(--ivory);
     background: linear-gradient(180deg, var(--teal-600), var(--teal-700));
-    border: 1px solid rgba(0,0,0,.2);
-    transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
+    border: 1px solid rgba(255,255,255,.08);
+    transition: transform .15s ease, box-shadow .15s ease;
   }
-  .btn-primary:hover { transform: translateY(-1px); filter: brightness(1.03); }
+  .btn-primary:hover { transform: translateY(-1px); }
   .btn-primary:active { transform: translateY(0); }
 
   /* Secondary (soft outline) */
   .btn-secondary {
     @apply inline-flex items-center justify-center rounded-xl px-5 py-3 font-semibold;
     color: var(--ivory);
-    background: rgba(0,0,0,.18);
-    border: 1px solid rgba(0,0,0,.28);
-    transition: transform .15s ease, border-color .15s ease, filter .15s ease;
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.10);
+    transition: transform .15s ease, border-color .15s ease;
     text-decoration: none;
   }
   .btn-secondary:hover {
     transform: translateY(-1px);
-    filter: brightness(1.02);
-    border-color: rgba(0,0,0,.4);
+    border-color: rgba(255,255,255,.18);
   }
 
   /* Muted/body text helpers */
   .theme-text-muted { color: var(--ivory-70); }
-  .theme-text-body  { color: #ffffff; }
+  .theme-text-body  { color: #f3f4f6; }
 
-  /* Inputs / selects / textareas: high contrast on mid-teal */
+  /* Inputs / selects / textareas: ensure ivory text, clean focus */
   input[type="text"],
   input[type="email"],
   input[type="number"],
@@ -125,8 +121,8 @@
   textarea,
   select {
     color: var(--ivory) !important;
-    background-color: rgba(0,0,0,0.18);
-    border: 1px solid rgba(0,0,0,0.28);
+    background-color: rgba(255,255,255,0.06);
+    border: 1px solid var(--border);
     min-height: 2.5rem; /* h-10 */
     border-radius: var(--radius);
   }
@@ -141,8 +137,8 @@
   /* shadcn SelectTrigger (button[role=combobox]) */
   button[role="combobox"] {
     color: var(--ivory) !important;
-    background-color: rgba(0,0,0,0.18);
-    border: 1px solid rgba(0,0,0,0.28);
+    background-color: rgba(255,255,255,0.06);
+    border: 1px solid var(--border);
     min-height: 2.5rem;
     border-radius: var(--radius);
   }
@@ -150,22 +146,32 @@
   button[role="combobox"][data-placeholder] {
     color: var(--ivory-70) !important;
   }
-
-  /* Optional helpers when you explicitly want black/white text atop the mid teal */
-  .text-on-bg-dark  { color: #000; }
-  .text-on-bg-light { color: #fff; }
 }
 
-/* =========================
-   Hero helpers (subtle overlay, no glows)
-   ========================= */
+/* ===== Hero helpers (ensure the image is clearly visible) ===== */
 @layer components {
+  /* Wrap your hero in a relatively positioned container */
+  .hero-wrap {
+    position: relative;
+    overflow: hidden;
+  }
+
   .hero-image {
     @apply absolute inset-0 w-full h-full object-cover;
-    opacity: .5; /* soft fade */
+    opacity: .88;            /* make the photo more visible */
+    z-index: 0;              /* behind overlay & content */
   }
+
+  /* Slightly lighter overlay than before so the image shows through */
   .hero-overlay {
     @apply absolute inset-0;
-    background: linear-gradient(to bottom, rgba(17,24,39,.40), rgba(17,24,39,.60));
+    background: linear-gradient(to bottom, rgba(17,24,39,.45), rgba(17,24,39,.65));
+    z-index: 10;
+  }
+
+  /* Place hero content above both */
+  .hero-content {
+    position: relative;
+    z-index: 20;
   }
 }
