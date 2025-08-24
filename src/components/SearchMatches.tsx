@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Heart, MapPin, GraduationCap, Briefcase, ArrowLeft, Loader2, ShieldCheck } from 'lucide-react';
+import { Heart, MapPin, GraduationCap, Briefcase, ArrowLeft, Loader2, ShieldCheck, Info } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 interface SearchMatchesProps {
@@ -32,8 +32,7 @@ type ProfileCard = {
   photos: string[] | null;
   is_public: boolean | null;
   updated_at?: string | null;
-  // we also filter by gender server-side; not needed for display, but fine to select
-  gender?: 'male' | 'female' | null;
+  gender?: string | null; // 👈 needed for display/debug
 };
 
 type Filters = {
@@ -58,29 +57,33 @@ const SearchMatches: React.FC<SearchMatchesProps> = ({ onConnect, onBack, onView
   const [results, setResults] = useState<ProfileCard[]>([]);
   const [loading, setLoading] = useState(false);
   const [uid, setUid] = useState<string | null>(null);
-  const [myGender, setMyGender] = useState<'' | 'male' | 'female'>('');
+  const [viewerGender, setViewerGender] = useState<'' | 'male' | 'female'>('');
   const [error, setError] = useState<string | null>(null);
 
   // pagination
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(false);
 
-  // Load auth user id, then load viewer's gender
+  // Load auth user + viewer gender
   useEffect(() => {
-    supabase.auth.getUser().then(async ({ data }) => {
+    (async () => {
+      const { data } = await supabase.auth.getUser();
       const me = data.user?.id ?? null;
       setUid(me);
       if (me) {
-        const { data: prof } = await supabase
+        const { data: p } = await supabase
           .from('profiles')
           .select('gender')
           .eq('id', me)
-          .maybeSingle();
-        const g = (prof?.gender ?? '') as 'male' | 'female' | '';
-        setMyGender(g || '');
+          .maybeSingle<{ gender: string | null }>();
+        const g = (p?.gender || '').toLowerCase();
+        setViewerGender(g === 'male' ? 'male' : g === 'female' ? 'female' : '');
       }
-    });
+    })();
   }, []);
+
+  const targetGender: 'male' | 'female' | null =
+    viewerGender === 'male' ? 'female' : viewerGender === 'female' ? 'male' : null;
 
   const hasAnyFilter = useMemo(
     () =>
@@ -94,14 +97,6 @@ const SearchMatches: React.FC<SearchMatchesProps> = ({ onConnect, onBack, onView
 
   async function fetchMatches(opts?: { append?: boolean; pageOverride?: number }) {
     if (!uid) return;
-
-    // Only search once we know the viewer's gender; if not set, don't query yet.
-    if (myGender !== 'male' && myGender !== 'female') {
-      setResults([]);
-      setHasMore(false);
-      return;
-    }
-
     setLoading(true);
     setError(null);
     if (!opts?.append) setResults([]);
@@ -127,21 +122,24 @@ const SearchMatches: React.FC<SearchMatchesProps> = ({ onConnect, onBack, onView
         'photos',
         'is_public',
         'updated_at',
-        'gender',
+        'gender', // 👈 bring gender for context
       ].join(', ');
 
-      // Start base query
       let query = supabase
         .from('profiles')
-        .select(columns)
-        .eq('is_public', true)
+        .select<string, ProfileCard>(columns)
         .neq('id', uid)
         .order('updated_at', { ascending: false })
         .range(from, to);
 
-      // ✅ Opposite-gender filter
-      const targetGender = myGender === 'male' ? 'female' : 'male';
-      query = query.eq('gender', targetGender);
+      // Treat null as public (legacy rows)
+      query = query.or('is_public.is.true,is_public.is.null');
+
+      // Gender filter (case-insensitive, tolerant)
+      if (targetGender) {
+        // Use ilike with % to match 'Female', 'female ', etc.
+        query = query.ilike('gender', `${targetGender}%`);
+      }
 
       // Safe number parsing
       const min = filters.ageMin.trim() === '' ? undefined : Number(filters.ageMin);
@@ -155,8 +153,7 @@ const SearchMatches: React.FC<SearchMatchesProps> = ({ onConnect, onBack, onView
 
       if (filters.prayerStatus !== 'any') query = query.eq('prayer_status', filters.prayerStatus);
 
-      // Type the response *after* building the query to avoid TS issues with .eq, .gte, etc.
-      const { data, error } = await query.returns<ProfileCard[]>();
+      const { data, error } = await query;
       if (error) {
         setError(error.message || 'Failed to load matches');
         setHasMore(false);
@@ -164,7 +161,7 @@ const SearchMatches: React.FC<SearchMatchesProps> = ({ onConnect, onBack, onView
       }
 
       const batch: ProfileCard[] = data ?? [];
-      setResults(prev => (opts?.append ? [...prev, ...batch] : batch));
+      setResults((prev) => (opts?.append ? [...prev, ...batch] : batch));
       setHasMore(batch.length === PAGE_SIZE);
     } catch (e: any) {
       setError(e?.message || 'Failed to load matches');
@@ -174,13 +171,13 @@ const SearchMatches: React.FC<SearchMatchesProps> = ({ onConnect, onBack, onView
     }
   }
 
-  // initial load and refetch when viewer gender becomes known
+  // initial load
   useEffect(() => {
     if (!uid) return;
     setPage(0);
     fetchMatches({ append: false, pageOverride: 0 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [uid, myGender]);
+  }, [uid, viewerGender]); // rerun if gender is detected later
 
   const applyFilters = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -194,13 +191,6 @@ const SearchMatches: React.FC<SearchMatchesProps> = ({ onConnect, onBack, onView
     fetchMatches({ append: true, pageOverride: next });
   };
 
-  const genderNotice =
-    myGender === 'male'
-      ? 'Showing women only (based on your gender).'
-      : myGender === 'female'
-      ? 'Showing men only (based on your gender).'
-      : '';
-
   return (
     <div className="min-h-screen theme-bg p-4">
       <div className="max-w-6xl mx-auto space-y-6">
@@ -212,19 +202,31 @@ const SearchMatches: React.FC<SearchMatchesProps> = ({ onConnect, onBack, onView
           </Button>
         </div>
 
+        {/* Viewer gender banner */}
+        <Card className="theme-card">
+          <CardContent className="py-3 flex items-start gap-2">
+            <Info className="h-4 w-4 text-ivory mt-1" />
+            <div className="text-sm">
+              {targetGender ? (
+                <span className="theme-text-body">
+                  Showing <span className="font-semibold">{targetGender === 'female' ? 'women' : 'men'}</span> only
+                  (based on your gender).
+                </span>
+              ) : (
+                <span className="theme-text-body">
+                  Your profile doesn’t have a <span className="font-semibold">Gender</span> set yet. You’ll see everyone
+                  until you set it in your profile.
+                </span>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
         <Card className="theme-card">
           <CardHeader>
             <CardTitle className="text-white">Search Filters</CardTitle>
           </CardHeader>
           <CardContent>
-            {myGender !== 'male' && myGender !== 'female' ? (
-              <div className="mb-4 text-amber-300 text-sm">
-                Please set your <strong>Gender</strong> in your profile to see matches.
-              </div>
-            ) : genderNotice ? (
-              <div className="mb-4 text-emerald-300 text-sm">{genderNotice}</div>
-            ) : null}
-
             <form onSubmit={applyFilters}>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="md:col-span-1">
@@ -290,7 +292,7 @@ const SearchMatches: React.FC<SearchMatchesProps> = ({ onConnect, onBack, onView
                   {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
                   Apply Filters
                 </Button>
-                {(hasAnyFilter || myGender === '') && (
+                {(hasAnyFilter || !!targetGender) && (
                   <Button
                     type="button"
                     variant="ghost"
@@ -332,21 +334,16 @@ const SearchMatches: React.FC<SearchMatchesProps> = ({ onConnect, onBack, onView
           </div>
         )}
 
-        {!error && !loading && myGender !== 'male' && myGender !== 'female' && (
+        {!error && !loading && results.length === 0 && (
           <Card className="theme-card">
             <CardContent className="text-center py-12">
-              <p className="theme-text-muted mb-2">
-                Set your <strong>Gender</strong> in your profile to find matches.
-              </p>
-            </CardContent>
-          </Card>
-        )}
-
-        {!error && !loading && results.length === 0 && (myGender === 'male' || myGender === 'female') && (
-          <Card className="theme-card">
-            <CardContent className="text-center py-12">
-              <p className="theme-text-muted mb-2">No matches found.</p>
+              <p className="theme-text-body mb-2">No matches found.</p>
               <p className="text-sm theme-text-muted">Try adjusting your filters.</p>
+              {targetGender && (
+                <p className="text-xs theme-text-muted mt-2">
+                  Tip: If profiles have no gender set yet, they won’t appear under the opposite-gender filter.
+                </p>
+              )}
             </CardContent>
           </Card>
         )}
@@ -361,7 +358,7 @@ const SearchMatches: React.FC<SearchMatchesProps> = ({ onConnect, onBack, onView
           {results.map((m) => {
             const photo = m.photos?.[0] || '';
             const locationDisplay =
-              (m.city || m.state) ? [m.city, m.state].filter(Boolean).join(', ') : (m.location || '—');
+              m.city || m.state ? [m.city, m.state].filter(Boolean).join(', ') : m.location || '—';
 
             return (
               <Card key={m.id} className="theme-card hover:shadow-lg transition-shadow">
@@ -377,13 +374,12 @@ const SearchMatches: React.FC<SearchMatchesProps> = ({ onConnect, onBack, onView
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-1">
-                      {/* Respect hide_sect */}
                       {!m.hide_sect && m.sect ? (
                         <Badge variant="outline" className="border-primary text-primary">
                           {m.sect}
                         </Badge>
                       ) : null}
-                      {m.is_public ? (
+                      {m.is_public ?? true ? (
                         <div className="flex items-center gap-1 text-emerald-300 text-xs">
                           <ShieldCheck className="h-3 w-3" /> Public
                         </div>
