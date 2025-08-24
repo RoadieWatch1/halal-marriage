@@ -254,7 +254,42 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
     [convList, selectedConnId]
   );
 
+  // --- Avatar helpers (safe for Tailwind purge; use inline sizes)
+  const nameOfOther = activeOther?.first_name || 'User';
+  const avatarOfOther = activeOther?.photos?.[0] || '';
+  const initialOfOther = (nameOfOther || 'U').trim().charAt(0).toUpperCase();
+
+  const Avatar: React.FC<{ url?: string; fallback: string; size: number; alt: string }> = ({
+    url,
+    fallback,
+    size,
+    alt,
+  }) => {
+    if (url) {
+      return (
+        <img
+          src={url}
+          alt={alt}
+          style={{ width: size, height: size }}
+          className="rounded-full object-cover border border-border"
+          loading="lazy"
+        />
+      );
+    }
+    return (
+      <div
+        style={{ width: size, height: size }}
+        className="rounded-full flex items-center justify-center bg-[rgba(255,255,255,0.06)] border border-border text-ivory"
+        aria-label={alt}
+        title={alt}
+      >
+        <span className="text-sm">{fallback}</span>
+      </div>
+    );
+  };
+
   return (
+    // Extra bottom padding so fixed Back button never overlaps
     <div className="min-h-screen theme-bg p-4 pb-28 md:pb-10">
       <div className="max-w-6xl mx-auto space-y-4">
         {/* Top back button */}
@@ -287,6 +322,9 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
                     const isActive = selectedConnId === item.conn.id;
                     const name = item.other?.first_name || 'User';
                     const last = item.lastMessage?.text ?? 'Say salam to start the conversation';
+                    const avatar = item.other?.photos?.[0] || '';
+                    const initial = (name || 'U').trim().charAt(0).toUpperCase();
+
                     return (
                       <div
                         key={item.conn.id}
@@ -295,11 +333,12 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
                           isActive ? 'bg-primary/10' : ''
                         }`}
                       >
-                        <div className="flex justify-between items-start">
-                          <div className="flex-1">
+                        <div className="flex items-center gap-3">
+                          <Avatar url={avatar} fallback={initial} size={40} alt={`${name} avatar`} />
+                          <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
-                              <h4 className="font-medium text-white">{name}</h4>
-                              <Badge variant="outline" className="text-xs border-primary text-primary">
+                              <h4 className="font-medium text-white truncate">{name}</h4>
+                              <Badge variant="outline" className="text-xs border-primary text-primary shrink-0">
                                 Accepted
                               </Badge>
                             </div>
@@ -318,11 +357,19 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
           <Card className="lg:col-span-2 theme-card flex flex-col">
             {selectedConnId ? (
               <>
+                {/* Header with avatar + name */}
                 <CardHeader className="border-b border-border">
-                  <CardTitle className="text-lg text-white">
-                    {activeOther?.first_name ? `Conversation with ${activeOther.first_name}` : 'Conversation'}
-                  </CardTitle>
-                  <p className="text-sm theme-text-muted">Maintain Islamic etiquette and keep intentions for nikah.</p>
+                  <div className="flex items-center gap-3">
+                    <Avatar url={avatarOfOther} fallback={initialOfOther} size={48} alt={`${nameOfOther} avatar large`} />
+                    <div className="min-w-0">
+                      <CardTitle className="text-lg text-white truncate">
+                        {activeOther?.first_name ? `Conversation with ${activeOther.first_name}` : 'Conversation'}
+                      </CardTitle>
+                      <p className="text-sm theme-text-muted">
+                        Maintain Islamic etiquette and keep intentions for nikah.
+                      </p>
+                    </div>
+                  </div>
                 </CardHeader>
 
                 {/* Messages (scrolls) + Composer (sticky & raised) */}
@@ -338,10 +385,24 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
                       messages.map((message) => {
                         const isMine = message.sender_id === uid;
                         const text = (message.content ?? message.body ?? '').trim();
+
                         return (
-                          <div key={message.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
+                          <div
+                            key={message.id}
+                            className={`flex ${isMine ? 'justify-end' : 'justify-start'} items-end gap-2`}
+                          >
+                            {/* their avatar beside their messages */}
+                            {!isMine && (
+                              <Avatar
+                                url={avatarOfOther}
+                                fallback={initialOfOther}
+                                size={32}
+                                alt={`${nameOfOther} avatar small`}
+                              />
+                            )}
+
                             <div
-                              className={`max-w-[70%] p-3 rounded-lg break-words whitespace-pre-wrap ${
+                              className={`max-w-[72%] p-3 rounded-lg break-words whitespace-pre-wrap ${
                                 isMine ? 'theme-button text-white' : 'bg-card text-white border border-border'
                               }`}
                             >
