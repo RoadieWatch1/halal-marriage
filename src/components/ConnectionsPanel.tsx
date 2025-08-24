@@ -5,8 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { supabase } from '@/lib/supabase';
-import { Check, X, Users, Loader2, MapPin, Eye, RefreshCcw } from 'lucide-react';
-import { toast } from '@/components/ui/sonner';
+import { Check, X, Users, Loader2, MapPin, Eye, RefreshCcw, MessageSquare } from 'lucide-react';
+import { toast } from 'sonner';
 
 type ConnectionRow = {
   id: string;
@@ -20,6 +20,9 @@ type ProfileBrief = {
   id: string;
   first_name: string | null;
   age: number | null;
+  // Prefer split fields; keep legacy fallback
+  city: string | null;
+  state: string | null;
   location: string | null;
   photos: string[] | null;
 };
@@ -53,6 +56,13 @@ const ConnectionsPanel: React.FC<Props> = ({ onViewProfile, onOpenMessages }) =>
     supabase.auth.getUser().then(({ data }) => setUid(data.user?.id ?? null));
   }, []);
 
+  const formatLocation = (p?: ProfileBrief | null) => {
+    const city = (p?.city || '').trim();
+    const state = (p?.state || '').trim();
+    const split = [city, state].filter(Boolean).join(', ');
+    return split || p?.location || '—';
+  };
+
   useEffect(() => {
     if (!uid) return;
     let active = true;
@@ -75,7 +85,7 @@ const ConnectionsPanel: React.FC<Props> = ({ onViewProfile, onOpenMessages }) =>
         const { data: reqProfiles, error: rpErr } = requesterIds.length
           ? await supabase
               .from('profiles')
-              .select('id, first_name, age, location, photos')
+              .select('id, first_name, age, city, state, location, photos')
               .in('id', requesterIds)
           : ({ data: [] } as any);
 
@@ -104,7 +114,7 @@ const ConnectionsPanel: React.FC<Props> = ({ onViewProfile, onOpenMessages }) =>
         const { data: otherProfiles, error: opErr } = otherIds.length
           ? await supabase
               .from('profiles')
-              .select('id, first_name, age, location, photos')
+              .select('id, first_name, age, city, state, location, photos')
               .in('id', otherIds)
           : ({ data: [] } as any);
 
@@ -185,7 +195,8 @@ const ConnectionsPanel: React.FC<Props> = ({ onViewProfile, onOpenMessages }) =>
 
   return (
     <div className="max-w-6xl mx-auto mt-6 space-y-6">
-      <Card className="theme-card">
+      {/* Pending requests (anchor target for Dashboard tile) */}
+      <Card className="theme-card" id="connections-panel">
         <CardHeader className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Users className="h-5 w-5 text-primary" />
@@ -216,6 +227,7 @@ const ConnectionsPanel: React.FC<Props> = ({ onViewProfile, onOpenMessages }) =>
             <div className="space-y-3">
               {pending.map(({ conn, requester }) => {
                 const img = requester?.photos?.[0] || '';
+                const loc = formatLocation(requester);
                 return (
                   <div key={conn.id} className="flex items-center justify-between rounded-lg border border-border p-3">
                     <div className="flex items-center gap-3">
@@ -230,7 +242,7 @@ const ConnectionsPanel: React.FC<Props> = ({ onViewProfile, onOpenMessages }) =>
                         </div>
                         <div className="text-xs theme-text-muted flex items-center gap-1">
                           <MapPin className="h-3 w-3" />
-                          {requester?.location || '—'}
+                          {loc}
                         </div>
                       </div>
                     </div>
@@ -255,7 +267,8 @@ const ConnectionsPanel: React.FC<Props> = ({ onViewProfile, onOpenMessages }) =>
         </CardContent>
       </Card>
 
-      <Card className="theme-card">
+      {/* Accepted connections */}
+      <Card className="theme-card" id="your-connections">
         <CardHeader className="flex items-center justify-between">
           <CardTitle className="text-white">Your Connections</CardTitle>
           <Badge variant="outline" className="border-primary text-primary">
@@ -273,6 +286,7 @@ const ConnectionsPanel: React.FC<Props> = ({ onViewProfile, onOpenMessages }) =>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {accepted.map(({ conn, other }) => {
                 const img = other?.photos?.[0] || '';
+                const loc = formatLocation(other);
                 return (
                   <div key={conn.id} className="flex items-center justify-between rounded-lg border border-border p-3">
                     <div className="flex items-center gap-3">
@@ -287,7 +301,7 @@ const ConnectionsPanel: React.FC<Props> = ({ onViewProfile, onOpenMessages }) =>
                         </div>
                         <div className="text-xs theme-text-muted flex items-center gap-1">
                           <MapPin className="h-3 w-3" />
-                          {other?.location || '—'}
+                          {loc}
                         </div>
                       </div>
                     </div>
@@ -300,9 +314,12 @@ const ConnectionsPanel: React.FC<Props> = ({ onViewProfile, onOpenMessages }) =>
                       <Button
                         variant="ghost"
                         onClick={() =>
-                          onOpenMessages ? onOpenMessages(conn.id) : toast('Open the Messages section to chat.')
+                          onOpenMessages
+                            ? onOpenMessages(conn.id)
+                            : toast('Open the Messages section to chat.')
                         }
                       >
+                        <MessageSquare className="h-4 w-4 mr-1" />
                         Message
                       </Button>
                     </div>
