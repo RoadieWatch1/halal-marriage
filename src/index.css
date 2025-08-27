@@ -6,19 +6,22 @@
 /* ===== Base tokens (calm, minimal) ===== */
 @layer base {
   :root {
+    /* lock UI to dark so browsers don't auto-adjust colors */
+    color-scheme: dark;
+
     --teal-600: #0d9488;
     --teal-700: #0f766e;
 
     --ivory: #f8f7f2;
     --ivory-70: rgba(248,247,242,.70);
 
-    /* Darkened background tones */
-    --charcoal-900: #0f1822;  /* a notch darker than #111827 */
-    --charcoal-880: #0c141d;  /* deeper base */
-    --charcoal-850: #131c26;  /* subtle sweep */
+    /* Darkened background tones (consistent across devices) */
+    --charcoal-900: #0f1822;  /* deep slate */
+    --charcoal-880: #0c141d;  /* base */
+    --charcoal-850: #131c26;  /* sweep */
     --charcoal-800: #1f2937;  /* cards */
 
-    /* Gold for the frame */
+    /* Gold frame */
     --gold-500: #d4af37;
 
     --background: var(--charcoal-900);
@@ -36,13 +39,22 @@
 
   * { @apply border-border; }
 
+  /* Ensure exact same paint on mobile & desktop */
+  html {
+    background:
+      radial-gradient(1100px 500px at 15% 85%, rgba(13,148,136,.06), transparent 60%),
+      linear-gradient(135deg, var(--charcoal-880), var(--charcoal-900));
+    min-height: 100%;
+  }
+
   body {
     @apply bg-background text-foreground font-sans;
-    /* Darker base + softer teal sweep */
     background:
       radial-gradient(1100px 500px at 15% 85%, rgba(13,148,136,.06), transparent 60%),
       linear-gradient(135deg, var(--charcoal-880), var(--charcoal-900));
     min-height: 100vh;
+    /* iOS sometimes adjusts text colors; keep it steady */
+    -webkit-text-size-adjust: 100%;
   }
 
   /* Thin, shiny gold frame brought inward & slightly thicker */
@@ -66,6 +78,16 @@
       border-radius: 12px;
     }
   }
+
+  /* Mobile browser chrome / safe-area (keeps edges same color) */
+  @supports(padding: max(0px)) {
+    body {
+      padding-left: max(0px, env(safe-area-inset-left));
+      padding-right: max(0px, env(safe-area-inset-right));
+      padding-top: max(0px, env(safe-area-inset-top));
+      padding-bottom: max(0px, env(safe-area-inset-bottom));
+    }
+  }
 }
 
 /* ===== Components ===== */
@@ -75,12 +97,19 @@
     background: linear-gradient(135deg, var(--charcoal-850), var(--charcoal-900));
   }
 
-  /* Glass card */
+  /* Glass card: identical on mobile & desktop */
   .theme-card {
     @apply rounded-xl border shadow-lg;
     background: rgba(31,41,55,.55); /* charcoal-800 / 55% */
     border-color: var(--border);
-    backdrop-filter: blur(8px);
+  }
+
+  /* Only apply blur where supported to avoid platform differences */
+  @supports ((-webkit-backdrop-filter: blur(8px)) or (backdrop-filter: blur(8px))) {
+    .theme-card {
+      -webkit-backdrop-filter: blur(8px);
+      backdrop-filter: blur(8px);
+    }
   }
 
   /* Primary button (teal) */
@@ -112,7 +141,7 @@
   .theme-text-muted { color: var(--ivory-70); }
   .theme-text-body  { color: #f3f4f6; }
 
-  /* Inputs / selects / textareas: ensure ivory text, clean focus */
+  /* Inputs / selects / textareas: ensure ivory text, clean focus, consistent autofill */
   input[type="text"],
   input[type="email"],
   input[type="number"],
@@ -147,11 +176,22 @@
   button[role="combobox"][data-placeholder] {
     color: var(--ivory-70) !important;
   }
+
+  /* Autofill color parity (Chrome/Safari) */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  textarea:-webkit-autofill,
+  textarea:-webkit-autofill:hover,
+  textarea:-webkit-autofill:focus {
+    -webkit-text-fill-color: var(--ivory) !important;
+    -webkit-box-shadow: 0 0 0px 1000px rgba(255,255,255,0.06) inset !important;
+    transition: background-color 99999s ease-in-out 0s; /* suppress yellow flash */
+  }
 }
 
-/* ===== Hero helpers (ensure the image is clearly visible) ===== */
+/* ===== Hero helpers (ensure the image is clearly visible & consistent) ===== */
 @layer components {
-  /* Wrap your hero in a relatively positioned container */
   .hero-wrap {
     position: relative;
     overflow: hidden;
@@ -159,18 +199,16 @@
 
   .hero-image {
     @apply absolute inset-0 w-full h-full object-cover;
-    opacity: .88;            /* make the photo more visible */
-    z-index: 0;              /* behind overlay & content */
+    opacity: .88;            /* more visible image */
+    z-index: 0;
   }
 
-  /* Slightly lighter overlay than before so the image shows through */
   .hero-overlay {
     @apply absolute inset-0;
     background: linear-gradient(to bottom, rgba(17,24,39,.45), rgba(17,24,39,.65));
     z-index: 10;
   }
 
-  /* Place hero content above both */
   .hero-content {
     position: relative;
     z-index: 20;
