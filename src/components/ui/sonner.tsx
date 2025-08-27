@@ -1,34 +1,33 @@
 // C:\Users\vizir\halal-marriage\src\components\ui\sonner.tsx
 import React from "react"
-import { Toaster as SonnerToaster, toast } from "sonner"
-import { useTheme } from "@/components/theme-provider"
 
-type ToasterProps = React.ComponentProps<typeof SonnerToaster>
+/**
+ * No-op Sonner shim: disables all toast popups app-wide while keeping the API.
+ * Leave your existing imports as:
+ *   import { toast } from "@/components/ui/sonner";
+ *   import { Toaster } from "@/components/ui/sonner";
+ * This file ensures those calls render nothing and do nothing.
+ */
 
-const Toaster = ({ ...props }: ToasterProps) => {
-  const { theme } = useTheme?.() || { theme: undefined }
-  const currentTheme = (theme as ToasterProps["theme"]) ?? "dark"
+type ToastFn = (..._args: any[]) => void
 
-  return (
-    <SonnerToaster
-      theme={currentTheme}
-      richColors
-      closeButton
-      className="toaster group"
-      toastOptions={{
-        classNames: {
-          toast:
-            "group toast group-[.toaster]:bg-background/95 group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg",
-          description: "group-[.toast]:text-muted-foreground",
-          actionButton:
-            "group-[.toast]:bg-primary group-[.toast]:text-primary-foreground",
-          cancelButton:
-            "group-[.toast]:bg-muted group-[.toast]:text-muted-foreground",
-        },
-      }}
-      {...props}
-    />
-  )
+export const toast: {
+  success: ToastFn
+  error: ToastFn
+  info: ToastFn
+  warning: ToastFn
+  message: ToastFn
+  dismiss: ToastFn
+} = {
+  success: () => {},
+  error: () => {},
+  info: () => {},
+  warning: () => {},
+  message: () => {},
+  dismiss: () => {},
 }
 
-export { Toaster, toast }
+// Render nothing so no popup UI appears
+export const Toaster: React.FC = () => null
+
+export default toast
