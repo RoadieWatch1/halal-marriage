@@ -164,7 +164,13 @@ const ProfileView: React.FC<Props> = ({ userId, onBack, onConnect }) => {
   const sameGenderBlocked =
     !!myGender && !!targetGender && myGender === targetGender;
 
-  // Log a profile view (opposite gender, not self, profile exists). Requires a table `profile_view_events(viewer_id uuid, viewed_id uuid, created_at timestamptz default now())`.
+  /**
+   * Log a profile view (idempotent per day)
+   * Requires SQL (once) to create a unique key on (viewer_id, viewed_id, viewed_on)
+   * and a generated column viewed_on (DATE).
+   *
+   * We use upsert with onConflict + ignoreDuplicates to avoid fake inflation.
+   */
   useEffect(() => {
     (async () => {
       if (loggedView) return;
@@ -176,9 +182,12 @@ const ProfileView: React.FC<Props> = ({ userId, onBack, onConnect }) => {
       try {
         const { error } = await supabase
           .from('profile_view_events')
-          .insert({ viewer_id: me, viewed_id: p.id });
+          .upsert(
+            { viewer_id: me, viewed_id: p.id },
+            { onConflict: 'viewer_id,viewed_id,viewed_on', ignoreDuplicates: true }
+          );
 
-        // Ignore duplicate/rls errors silently; this is best-effort
+        // Ignore RLS/dup errors silently; this is best-effort
         if (!error) setLoggedView(true);
       } catch {
         // no-op
