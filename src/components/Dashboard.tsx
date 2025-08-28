@@ -1,4 +1,5 @@
-import React, { useMemo } from "react";
+// C:\Users\vizir\halal-marriage\src\components\Dashboard.tsx
+import React, { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,6 +12,7 @@ import {
   Edit3,
   ArrowRight,
 } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 
 type Section = "dashboard" | "search" | "messages" | "profile";
 
@@ -41,14 +43,82 @@ function estimateCompletion(u: any): number {
   return Math.max(0, Math.min(100, pct));
 }
 
+type Counts = {
+  views7d: number;
+  pendingRequests: number;
+  activeConvos: number;
+  loading: boolean;
+};
+
 const Dashboard: React.FC<DashboardProps> = ({ user, onNavigate }) => {
   const firstName = user?.firstName || "Friend";
   const completion = useMemo(() => estimateCompletion(user), [user]);
 
-  // TODO: replace with real counts from Supabase
-  const profileViews = 12;
-  const pendingRequests = 3;
-  const activeConvos = 1;
+  const [counts, setCounts] = useState<Counts>({
+    views7d: 0,
+    pendingRequests: 0,
+    activeConvos: 0,
+    loading: true,
+  });
+
+  // Fetch live counts from Supabase
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchCounts() {
+      if (!user?.id) {
+        setCounts((c) => ({ ...c, loading: false }));
+        return;
+      }
+
+      try {
+        setCounts((c) => ({ ...c, loading: true }));
+
+        const since = new Date();
+        since.setDate(since.getDate() - 7);
+        const sinceIso = since.toISOString();
+
+        // Profile views in the last 7 days
+        const { count: viewsCount } = await supabase
+          .from("profile_view_events")
+          .select("*", { count: "exact", head: true })
+          .eq("viewed_id", user.id)
+          .gte("created_at", sinceIso);
+
+        // Pending connection requests addressed to me
+        const { count: pendingCount } = await supabase
+          .from("connections")
+          .select("*", { count: "exact", head: true })
+          .eq("receiver_id", user.id)
+          .eq("status", "pending");
+
+        // Active conversations (by membership)
+        // Assumes a join table with one row per (conversation_id, user_id).
+        const { count: convosCount } = await supabase
+          .from("conversations_participants")
+          .select("*", { count: "exact", head: true })
+          .eq("user_id", user.id);
+
+        if (!cancelled) {
+          setCounts({
+            views7d: viewsCount ?? 0,
+            pendingRequests: pendingCount ?? 0,
+            activeConvos: convosCount ?? 0,
+            loading: false,
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          setCounts((c) => ({ ...c, loading: false }));
+        }
+      }
+    }
+
+    fetchCounts();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
 
   // Click handlers
   const openProfileViews = () => {
@@ -111,7 +181,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onNavigate }) => {
         <StatCard
           icon={<Eye className="h-4 w-4" />}
           label="Profile Views"
-          value={profileViews}
+          value={counts.loading ? "…" : counts.views7d}
           hint="This week"
           onClick={openProfileViews}
           ariaLabel="Open Profile Views section"
@@ -119,7 +189,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onNavigate }) => {
         <StatCard
           icon={<UserPlus className="h-4 w-4" />}
           label="Connection Requests"
-          value={pendingRequests}
+          value={counts.loading ? "…" : counts.pendingRequests}
           hint="Pending review"
           onClick={openRequests}
           ariaLabel="Open Connection Requests"
@@ -127,7 +197,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onNavigate }) => {
         <StatCard
           icon={<MessageSquare className="h-4 w-4" />}
           label="Active Conversations"
-          value={activeConvos}
+          value={counts.loading ? "…" : counts.activeConvos}
           hint="Ongoing"
           onClick={openMessages}
           ariaLabel="Open Messages"
@@ -188,7 +258,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onNavigate }) => {
         </div>
       </section>
 
-      {/* Guidance blocks (optional, calm & simple) */}
+      {/* Guidance blocks */}
       <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card className="theme-card p-4 md:p-5">
           <h3 className="text-base font-semibold text-foreground mb-1">Potential Matches</h3>
@@ -211,11 +281,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onNavigate }) => {
         </Card>
       </section>
 
-      {/* Optional anchor section for Profile Views (so the tile scroll works) */}
+      {/* Anchor section for Profile Views */}
       <section id="profile-views" className="theme-card p-4 md:p-5">
         <h3 className="text-base font-semibold text-foreground mb-1">Profile Views</h3>
         <p className="text-sm theme-text-muted">
-          Views in the last 7 days: <span className="text-foreground font-semibold">{profileViews}</span>
+          Views in the last 7 days:{" "}
+          <span className="text-foreground font-semibold">
+            {counts.loading ? "…" : counts.views7d}
+          </span>
         </p>
         <p className="text-xs theme-text-muted mt-2">
           We’ll soon list who viewed your profile (respecting privacy settings).

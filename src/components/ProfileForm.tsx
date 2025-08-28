@@ -10,22 +10,55 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { MediaUpload } from '@/components/MediaUpload';
 import { ArrowLeft, X } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface ProfileFormProps {
-  onSave: (profileData: any) => void;
+  onSave: (profileData: any) => void | Promise<void>;
   initialData?: any;
   onBack?: () => void; // optional back handler from parent
 }
 
+type Gender = '' | 'male' | 'female';
+
+type ProfileState = {
+  firstName: string;
+  gender: Gender;
+  age: string | number;
+  city: string;
+  state: string;
+  ethnicity: string;
+  occupation: string;
+  education: string;
+  maritalStatus: string;
+  revertStatus: string;
+  shahadaAge: string;
+  prayerStatus: string;
+  sect: string;
+  hideSect: boolean;
+  hijabPreference: string;
+  familyInvolvement: boolean;
+  waliInfo: string;
+  bio: string;
+  photos: string[];
+  video: string;
+  isPublic: boolean;
+};
+
 const MAX_PHOTOS = 10;
 
+const normalizeGender = (val?: string | null): Gender => {
+  const g = (val || '').trim().toLowerCase();
+  if (g === 'male') return 'male';
+  if (g === 'female') return 'female';
+  return '';
+};
+
 const ProfileForm: React.FC<ProfileFormProps> = ({ onSave, initialData = {}, onBack }) => {
-  const [profile, setProfile] = useState({
+  const [profile, setProfile] = useState<ProfileState>({
     firstName: initialData.firstName || '',
-    // ✅ Gender (required for opposite-gender matching)
-    gender: initialData.gender || '',
+    gender: normalizeGender(initialData.gender),
     age: initialData.age || '',
-    // ✅ split location into city/state (fallback: parse initialData.location if provided)
+    // split location into city/state (fallback: parse initialData.location if provided)
     city:
       initialData.city ||
       (typeof initialData.location === 'string' ? (initialData.location.split(',')[0] || '').trim() : ''),
@@ -35,11 +68,11 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ onSave, initialData = {}, onB
     ethnicity: initialData.ethnicity || '',
     occupation: initialData.occupation || '',
     education: initialData.education || '',
-    // ✅ will include polygyny statuses
+    // includes polygyny statuses
     maritalStatus: initialData.maritalStatus || '',
-    // ✅ keep the same data key for compatibility; label shown to users is "Muslim Status"
+    // keep the same data key for compatibility; label shown to users is "Muslim Status"
     revertStatus: initialData.revertStatus || '',
-    // ✅ NEW: Shahada Age (free text: "2 years", "since 2021", "planning", etc.)
+    // NEW: Shahada Age (free text)
     shahadaAge: initialData.shahadaAge || '',
     prayerStatus: initialData.prayerStatus || '',
     sect: initialData.sect || '',
@@ -58,7 +91,7 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ onSave, initialData = {}, onB
     setProfile((p) => ({
       ...p,
       firstName: initialData.firstName ?? p.firstName,
-      gender: initialData.gender ?? p.gender,
+      gender: normalizeGender(initialData.gender ?? p.gender),
       age: initialData.age ?? p.age,
       city:
         initialData.city ??
@@ -133,30 +166,46 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ onSave, initialData = {}, onB
     setProfile((prev) => ({ ...prev, video: '' }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Quick client validation for required select
+    // Quick client validation for required fields
+    if (!profile.firstName.trim()) {
+      toast.error('Please enter your first name.');
+      return;
+    }
     if (!profile.gender) {
-      // Replace with toast if desired
-      alert('Please select your gender.');
+      toast.error('Please select your gender.');
+      return;
+    }
+    if (profile.age === '' || Number(profile.age) < 18) {
+      toast.error('Age must be 18 or older.');
+      return;
+    }
+    if (!profile.city.trim() || !profile.state.trim()) {
+      toast.error('Please provide both city and state.');
+      return;
+    }
+    if (!profile.occupation.trim()) {
+      toast.error('Please provide your occupation.');
       return;
     }
 
-    // Backward-compat: keep a combined 'location' string if other parts still use it
+    // Build a combined 'location' string for any legacy UI paths
     const location = [profile.city, profile.state].filter(Boolean).join(', ').trim();
 
     const finalData = {
       ...profile,
       age: profile.age === '' ? '' : Number(profile.age),
-      gender: profile.gender,
+      gender: normalizeGender(profile.gender),
       location, // legacy/combined
       city: profile.city,
       state: profile.state,
       // ensure we pass through the new field to be saved upstream
       shahadaAge: profile.shahadaAge,
     };
-    onSave(finalData);
+
+    await onSave(finalData);
   };
 
   const discoverableText = profile.isPublic ? 'Discoverable' : 'Hidden';
@@ -227,9 +276,11 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ onSave, initialData = {}, onB
               {/* Gender */}
               <div>
                 <Label htmlFor="gender" className="text-white">Gender</Label>
+                {/* Hidden input helps browser-level required semantics if needed */}
+                <input type="hidden" name="gender" value={profile.gender} required />
                 <Select
                   value={profile.gender}
-                  onValueChange={(value) => setProfile({ ...profile, gender: value })}
+                  onValueChange={(value) => setProfile({ ...profile, gender: value as Gender })}
                 >
                   <SelectTrigger id="gender" aria-required="true">
                     <SelectValue placeholder="Select gender" />
@@ -320,7 +371,7 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ onSave, initialData = {}, onB
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="single">Single</SelectItem>
-                    {/* ✅ Polygyny-friendly statuses */}
+                    {/* Polygyny-friendly statuses */}
                     <SelectItem value="married_1_wife">Married — 1 wife</SelectItem>
                     <SelectItem value="married_2_wives">Married — 2 wives</SelectItem>
                     <SelectItem value="married_3_wives">Married — 3 wives</SelectItem>
@@ -348,7 +399,7 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ onSave, initialData = {}, onB
                 </Select>
               </div>
 
-              {/* ✅ Renamed visually: Muslim Status (keeps values for compatibility) */}
+              {/* Muslim Status (keeps values for compatibility) */}
               <div>
                 <Label className="text-white">Muslim Status</Label>
                 <Select
@@ -366,7 +417,7 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ onSave, initialData = {}, onB
                 </Select>
               </div>
 
-              {/* ✅ NEW: Shahada Age */}
+              {/* NEW: Shahada Age */}
               <div className="md:col-span-3">
                 <Label htmlFor="shahadaAge" className="text-white">Shahada Age</Label>
                 <Input

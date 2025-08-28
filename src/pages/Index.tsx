@@ -57,6 +57,13 @@ type ProfileRow = {
   updated_at?: string | null;
 };
 
+const normalizeGender = (val?: string | null): '' | 'male' | 'female' => {
+  const g = (val || '').trim().toLowerCase();
+  if (g === 'male') return 'male';
+  if (g === 'female') return 'female';
+  return '';
+};
+
 const Index: React.FC = () => {
   const [user, setUser] = useState<any>(null);
   const [profileExists, setProfileExists] = useState<boolean | null>(null);
@@ -73,6 +80,7 @@ const Index: React.FC = () => {
     const city = row.city || '';
     const state = row.state || '';
     const combinedLocation = row.location || [city, state].filter(Boolean).join(', ');
+    const gender = normalizeGender(row.gender);
 
     return {
       firstName: row.first_name || '',
@@ -83,8 +91,8 @@ const Index: React.FC = () => {
       state,
       location: combinedLocation,
 
-      // gender
-      gender: row.gender || '',
+      // normalized gender
+      gender,
 
       ethnicity: row.ethnicity || '',
       occupation: row.occupation || '',
@@ -133,7 +141,7 @@ const Index: React.FC = () => {
 
       if (error) {
         console.warn('profiles fetch error:', error);
-        setUser({ ...sessionUser, firstName: 'User', profileComplete: false });
+        setUser({ ...sessionUser, firstName: 'User', profileComplete: false, gender: '' });
         setProfileExists(false);
         setShowProfileForm(false);
         setShowHero(false); // hide hero for logged-in users even if profile missing
@@ -149,7 +157,7 @@ const Index: React.FC = () => {
         setShowHero(false); // hide hero when logged in
         setShowWelcome(false);
       } else {
-        setUser({ ...sessionUser, firstName: 'User', profileComplete: false });
+        setUser({ ...sessionUser, firstName: 'User', profileComplete: false, gender: '' });
         setProfileExists(false);
         setShowProfileForm(false);
         setShowHero(false); // hide hero when logged in
@@ -223,6 +231,13 @@ const Index: React.FC = () => {
       return;
     }
 
+    // Require gender to prevent mismatched search results
+    const normalizedGender = normalizeGender(profileData.gender);
+    if (!normalizedGender) {
+      toast.error('Please select your gender before saving.');
+      return;
+    }
+
     // Build combined location string for backward-compat UI if needed
     const combinedLocation =
       profileData.location ||
@@ -240,8 +255,8 @@ const Index: React.FC = () => {
       // keep legacy combined
       location: combinedLocation,
 
-      // persist gender
-      gender: profileData.gender || null,
+      // persist normalized gender
+      gender: normalizedGender,
 
       ethnicity: profileData.ethnicity || null,
       occupation: profileData.occupation || null,
@@ -299,7 +314,26 @@ const Index: React.FC = () => {
       setShowProfileForm(true);
       setShowHero(false);
       setShowWelcome(false);
-    } else if (section === 'search' || section === 'messages' || section === 'dashboard') {
+      return;
+    }
+
+    if (section === 'search') {
+      // Gate search if gender not set, to prevent same-gender results
+      const g = normalizeGender(user?.gender);
+      if (!g) {
+        toast.error('Please set your gender in Profile to see matches.');
+        setShowProfileForm(true);
+        setShowHero(false);
+        setShowWelcome(false);
+        return;
+      }
+      setCurrentSection('search');
+      setShowHero(false);
+      setShowWelcome(false);
+      return;
+    }
+
+    if (section === 'messages' || section === 'dashboard') {
       setCurrentSection(section as Section);
       setShowHero(false);
       setShowWelcome(false);
@@ -369,6 +403,13 @@ const Index: React.FC = () => {
           name={user.firstName || 'Friend'}
           completion={85}
           onStartMatching={() => {
+            const g = normalizeGender(user?.gender);
+            if (!g) {
+              toast.error('Please set your gender in Profile to see matches.');
+              setShowWelcome(false);
+              setShowProfileForm(true);
+              return;
+            }
             setShowWelcome(false);
             setCurrentSection('search');
           }}

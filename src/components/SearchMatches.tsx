@@ -32,7 +32,7 @@ type ProfileCard = {
   photos: string[] | null;
   is_public: boolean | null;
   updated_at?: string | null;
-  gender?: string | null; // 👈 needed for display/debug
+  gender?: string | null; // for display/debug
 };
 
 type Filters = {
@@ -57,27 +57,33 @@ const SearchMatches: React.FC<SearchMatchesProps> = ({ onConnect, onBack, onView
   const [results, setResults] = useState<ProfileCard[]>([]);
   const [loading, setLoading] = useState(false);
   const [uid, setUid] = useState<string | null>(null);
-  const [viewerGender, setViewerGender] = useState<'' | 'male' | 'female'>('');
+
+  // IMPORTANT: start as null so we can gate fetching until known
+  const [viewerGender, setViewerGender] = useState<null | 'male' | 'female'>(null);
   const [error, setError] = useState<string | null>(null);
 
   // pagination
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(false);
 
-  // Load auth user + viewer gender
+  // Load auth user + viewer gender (normalized)
   useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getUser();
       const me = data.user?.id ?? null;
       setUid(me);
+
       if (me) {
         const { data: p } = await supabase
           .from('profiles')
           .select('gender')
           .eq('id', me)
           .maybeSingle<{ gender: string | null }>();
-        const g = (p?.gender || '').toLowerCase();
-        setViewerGender(g === 'male' ? 'male' : g === 'female' ? 'female' : '');
+
+        const g = (p?.gender || '').trim().toLowerCase();
+        setViewerGender(g === 'male' ? 'male' : g === 'female' ? 'female' : null);
+      } else {
+        setViewerGender(null);
       }
     })();
   }, []);
@@ -96,7 +102,12 @@ const SearchMatches: React.FC<SearchMatchesProps> = ({ onConnect, onBack, onView
   );
 
   async function fetchMatches(opts?: { append?: boolean; pageOverride?: number }) {
-    if (!uid) return;
+    // Gate: do not fetch until auth and gender are known
+    if (!uid || viewerGender === null) {
+      setHasMore(false);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     if (!opts?.append) setResults([]);
@@ -122,12 +133,12 @@ const SearchMatches: React.FC<SearchMatchesProps> = ({ onConnect, onBack, onView
         'photos',
         'is_public',
         'updated_at',
-        'gender', // 👈 bring gender for context
+        'gender',
       ].join(', ');
 
       let query = supabase
         .from('profiles')
-        .select<string, ProfileCard>(columns)
+        .select(columns)
         .neq('id', uid)
         .order('updated_at', { ascending: false })
         .range(from, to);
@@ -135,13 +146,12 @@ const SearchMatches: React.FC<SearchMatchesProps> = ({ onConnect, onBack, onView
       // Treat null as public (legacy rows)
       query = query.or('is_public.is.true,is_public.is.null');
 
-      // Gender filter (case-insensitive, tolerant)
+      // Enforce opposite-gender filter when known
       if (targetGender) {
-        // Use ilike with % to match 'Female', 'female ', etc.
-        query = query.ilike('gender', `${targetGender}%`);
+        query = query.ilike('gender', `${targetGender}%`); // tolerant to case/trailing spaces
       }
 
-      // Safe number parsing
+      // Safe number parsing for ages
       const min = filters.ageMin.trim() === '' ? undefined : Number(filters.ageMin);
       const max = filters.ageMax.trim() === '' ? undefined : Number(filters.ageMax);
       if (min !== undefined && !Number.isNaN(min)) query = query.gte('age', min);
@@ -160,7 +170,7 @@ const SearchMatches: React.FC<SearchMatchesProps> = ({ onConnect, onBack, onView
         return;
       }
 
-      const batch: ProfileCard[] = data ?? [];
+      const batch: ProfileCard[] = (data as unknown as ProfileCard[]) ?? [];
       setResults((prev) => (opts?.append ? [...prev, ...batch] : batch));
       setHasMore(batch.length === PAGE_SIZE);
     } catch (e: any) {
@@ -171,16 +181,23 @@ const SearchMatches: React.FC<SearchMatchesProps> = ({ onConnect, onBack, onView
     }
   }
 
-  // initial load
+  // initial load + rerun when gender becomes known
   useEffect(() => {
     if (!uid) return;
+    if (viewerGender === null) {
+      // Do not fetch yet; ask user to set gender in Profile
+      setResults([]);
+      setHasMore(false);
+      return;
+    }
     setPage(0);
     fetchMatches({ append: false, pageOverride: 0 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [uid, viewerGender]); // rerun if gender is detected later
+  }, [uid, viewerGender]);
 
   const applyFilters = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (!uid || viewerGender === null) return;
     setPage(0);
     fetchMatches({ append: false, pageOverride: 0 });
   };
@@ -214,8 +231,8 @@ const SearchMatches: React.FC<SearchMatchesProps> = ({ onConnect, onBack, onView
                 </span>
               ) : (
                 <span className="theme-text-body">
-                  Your profile doesn’t have a <span className="font-semibold">Gender</span> set yet. You’ll see everyone
-                  until you set it in your profile.
+                  Your profile doesn’t have a <span className="font-semibold">Gender</span> set yet. Please set it in
+                  your Profile to see matches.
                 </span>
               )}
             </div>
@@ -237,12 +254,14 @@ const SearchMatches: React.FC<SearchMatchesProps> = ({ onConnect, onBack, onView
                       type="number"
                       value={filters.ageMin}
                       onChange={(e) => setFilters({ ...filters, ageMin: e.target.value })}
+                      disabled={viewerGender === null}
                     />
                     <Input
                       placeholder="Max"
                       type="number"
                       value={filters.ageMax}
                       onChange={(e) => setFilters({ ...filters, ageMax: e.target.value })}
+                      disabled={viewerGender === null}
                     />
                   </div>
                 </div>
@@ -254,6 +273,7 @@ const SearchMatches: React.FC<SearchMatchesProps> = ({ onConnect, onBack, onView
                     placeholder="e.g., Dallas"
                     value={filters.city}
                     onChange={(e) => setFilters({ ...filters, city: e.target.value })}
+                    disabled={viewerGender === null}
                   />
                 </div>
 
@@ -263,6 +283,7 @@ const SearchMatches: React.FC<SearchMatchesProps> = ({ onConnect, onBack, onView
                     placeholder="e.g., TX"
                     value={filters.state}
                     onChange={(e) => setFilters({ ...filters, state: e.target.value })}
+                    disabled={viewerGender === null}
                   />
                 </div>
 
@@ -273,6 +294,7 @@ const SearchMatches: React.FC<SearchMatchesProps> = ({ onConnect, onBack, onView
                     onValueChange={(value) =>
                       setFilters({ ...filters, prayerStatus: value as Filters['prayerStatus'] })
                     }
+                    disabled={viewerGender === null}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Any" />
@@ -288,7 +310,7 @@ const SearchMatches: React.FC<SearchMatchesProps> = ({ onConnect, onBack, onView
               </div>
 
               <div className="flex items-center gap-3 mt-4">
-                <Button type="submit" className="theme-button" disabled={loading}>
+                <Button type="submit" className="theme-button" disabled={loading || viewerGender === null}>
                   {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
                   Apply Filters
                 </Button>
@@ -301,7 +323,7 @@ const SearchMatches: React.FC<SearchMatchesProps> = ({ onConnect, onBack, onView
                       setPage(0);
                       setTimeout(() => fetchMatches({ append: false, pageOverride: 0 }), 0);
                     }}
-                    disabled={loading}
+                    disabled={loading || viewerGender === null}
                     className="text-white hover:bg-white/10"
                   >
                     Clear
@@ -334,7 +356,7 @@ const SearchMatches: React.FC<SearchMatchesProps> = ({ onConnect, onBack, onView
           </div>
         )}
 
-        {!error && !loading && results.length === 0 && (
+        {!error && !loading && results.length === 0 && viewerGender !== null && (
           <Card className="theme-card">
             <CardContent className="text-center py-12">
               <p className="theme-text-body mb-2">No matches found.</p>

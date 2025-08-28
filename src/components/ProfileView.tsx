@@ -44,41 +44,58 @@ type Profile = {
   is_public: boolean | null;
   updated_at?: string | null;
 
-  // 🚦 needed for gender-based visibility
-  gender?: 'male' | 'female' | null;
+  // needed for gender-based visibility
+  gender?: string | null;
 };
 
 interface Props {
   userId: string;
   onBack: () => void;
-  onConnect?: (userId: string) => void;
+  onConnect?: (userId: string) => void | Promise<void>;
 }
+
+type NormGender = '' | 'male' | 'female';
+
+const normalizeGender = (val?: string | null): NormGender => {
+  const g = (val || '').trim().toLowerCase();
+  if (g === 'male') return 'male';
+  if (g === 'female') return 'female';
+  return '';
+};
 
 const ProfileView: React.FC<Props> = ({ userId, onBack, onConnect }) => {
   const [me, setMe] = useState<string | null>(null);
-  const [myGender, setMyGender] = useState<'' | 'male' | 'female'>('');
+  const [myGender, setMyGender] = useState<NormGender>('');
   const [p, setP] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loggedView, setLoggedView] = useState(false);
 
-  // Load viewer id + viewer gender
+  // Load viewer id + viewer gender (normalized)
   useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getUser();
       const myId = data.user?.id ?? null;
       setMe(myId);
+
       if (myId) {
         const { data: prof } = await supabase
           .from('profiles')
           .select('gender')
           .eq('id', myId)
-          .maybeSingle<{ gender: 'male' | 'female' | null }>();
-        const g = (prof?.gender ?? '') as 'male' | 'female' | '';
-        setMyGender(g || '');
+          .maybeSingle<{ gender: string | null }>();
+        setMyGender(normalizeGender(prof?.gender));
+      } else {
+        setMyGender('');
       }
     })();
   }, []);
+
+  // Reset view log flag when opening a different user
+  useEffect(() => {
+    setLoggedView(false);
+  }, [userId]);
 
   // Load target profile
   useEffect(() => {
@@ -110,14 +127,14 @@ const ProfileView: React.FC<Props> = ({ userId, onBack, onConnect }) => {
               'video',
               'is_public',
               'updated_at',
-              'gender', // ✅ needed for gating
+              'gender', // needed for gating
             ].join(', ')
           )
           .eq('id', userId)
           .maybeSingle<Profile>();
 
-        if (error) throw error;
         if (!active) return;
+        if (error) throw error;
 
         if (!data) {
           setP(null);
@@ -138,6 +155,37 @@ const ProfileView: React.FC<Props> = ({ userId, onBack, onConnect }) => {
     };
   }, [userId]);
 
+  // Compute display helpers
+  const hero = p?.photos?.[0] ?? '';
+  const locationDisplay =
+    p && (p.city || p.state) ? [p.city, p.state].filter(Boolean).join(', ') : (p?.location || '—');
+
+  const targetGender = normalizeGender(p?.gender);
+  const sameGenderBlocked =
+    !!myGender && !!targetGender && myGender === targetGender;
+
+  // Log a profile view (opposite gender, not self, profile exists). Requires a table `profile_view_events(viewer_id uuid, viewed_id uuid, created_at timestamptz default now())`.
+  useEffect(() => {
+    (async () => {
+      if (loggedView) return;
+      if (!me || !p) return;
+      if (me === p.id) return;
+      if (!myGender || !targetGender) return; // only after genders are known
+      if (sameGenderBlocked) return; // don't log if blocked
+
+      try {
+        const { error } = await supabase
+          .from('profile_view_events')
+          .insert({ viewer_id: me, viewed_id: p.id });
+
+        // Ignore duplicate/rls errors silently; this is best-effort
+        if (!error) setLoggedView(true);
+      } catch {
+        // no-op
+      }
+    })();
+  }, [me, p, myGender, targetGender, sameGenderBlocked, loggedView]);
+
   const canConnect = Boolean(onConnect && me && me !== userId);
 
   const handleConnect = async () => {
@@ -153,19 +201,9 @@ const ProfileView: React.FC<Props> = ({ userId, onBack, onConnect }) => {
     }
   };
 
-  const hero = p?.photos?.[0] ?? '';
-
-  // Prefer City, State; fall back to legacy "location"
-  const locationDisplay =
-    (p?.city || p?.state) ? [p?.city, p?.state].filter(Boolean).join(', ') : (p?.location || '—');
-
-  // 🚦 Gender gating
-  const sameGenderBlocked =
-    myGender && (myGender === 'male' || myGender === 'female') && p?.gender && myGender === p.gender;
-
   // Friendly label for revert_status shown as “Muslim Status”
   const muslimStatusLabel = (() => {
-    const v = (p?.revert_status || '').toLowerCase();
+    const v = (p?.revert_status || '').toLowerCase().trim();
     if (v === 'born') return 'Born into Islam';
     if (v === 'revert' || v === 'embraced') return 'Embraced Islam';
     if (v === 'prefer_not_say' || v === 'prefer not to say') return 'Prefer not to say';
@@ -205,7 +243,7 @@ const ProfileView: React.FC<Props> = ({ userId, onBack, onConnect }) => {
             <CardContent className="p-6 text-red-300">{error}</CardContent>
           ) : !p ? (
             <CardContent className="p-6 theme-text-muted">Profile not found.</CardContent>
-          ) : myGender !== 'male' && myGender !== 'female' ? (
+          ) : !myGender ? (
             <CardContent className="p-6">
               <h3 className="text-white font-semibold mb-2">Set your gender to view profiles</h3>
               <p className="text-sm theme-text-muted mb-4">
