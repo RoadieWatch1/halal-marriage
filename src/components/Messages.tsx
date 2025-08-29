@@ -27,11 +27,10 @@ type ProfileBrief = {
 type MessageRow = {
   id: string;
   sender_id: string;
-  content?: string | null; // some schemas
-  body?: string | null;    // alternative column
+  content?: string | null;
+  body?: string | null;     // if your schema uses "body"
   created_at: string;
-  connection_id?: string | null;
-  conversation_id?: string | null; // alternative FK
+  connection_id: string;
 };
 
 type UiMessageStatus = 'sending' | 'sent' | 'error';
@@ -45,8 +44,8 @@ type ConversationItem = {
 
 interface MessagesProps {
   user: any;
-  initialConnectionId?: string; // open a specific thread
-  onBack?: () => void;          // navigate back (e.g., to dashboard)
+  initialConnectionId?: string;
+  onBack?: () => void;
 }
 
 const friendly = (raw?: string) => {
@@ -54,7 +53,7 @@ const friendly = (raw?: string) => {
   if (m.includes('permission denied') || m.includes('violates row-level security')) {
     return 'You are not allowed to send messages to this user yet (connection must be accepted).';
   }
-  if (m.includes('foreign key') || m.includes('connection_id') || m.includes('conversation_id')) {
+  if (m.includes('foreign key') || m.includes('connection_id')) {
     return 'This conversation is not available. Try opening it again from Connections.';
   }
   return raw || 'Could not send message';
@@ -72,31 +71,26 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
 
-  // Realtime channels (support conn_id & conv_id schemas)
-  const channelConnRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
-  const channelConvRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
-
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
+  useEffect(() => { setUid(user?.id ?? null); }, [user?.id]);
   useEffect(() => {
-    setUid(user?.id ?? null);
-  }, [user?.id]);
+    // Fallback: fetch auth user if parent didn't pass one yet
+    if (!uid) supabase.auth.getUser().then(({ data }) => setUid(data.user?.id ?? null));
+  }, [uid]);
 
   const handleBack = () => {
     if (onBack) return onBack();
     if (typeof window !== 'undefined') {
       const p = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-      p.set('s', 'dashboard');
-      p.delete('cid');
-      p.delete('uid');
+      p.set('s', 'dashboard'); p.delete('cid'); p.delete('uid');
       window.location.hash = `#${p.toString()}`;
     }
   };
 
-  useEffect(() => {
-    if (initialConnectionId) setSelectedConnId(initialConnectionId);
-  }, [initialConnectionId]);
+  useEffect(() => { if (initialConnectionId) setSelectedConnId(initialConnectionId); }, [initialConnectionId]);
 
   // Load conversations (accepted only)
   useEffect(() => {
@@ -113,13 +107,10 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
           .eq('status', 'accepted')
           .or(`requester_id.eq.${uid},receiver_id.eq.${uid}`)
           .order('created_at', { ascending: false });
-
         if (error) throw error;
 
         const list = (rows ?? []) as ConnectionRow[];
-        const otherIds = Array.from(
-          new Set(list.map((c) => (c.requester_id === uid ? c.receiver_id : c.requester_id)))
-        );
+        const otherIds = Array.from(new Set(list.map((c) => (c.requester_id === uid ? c.receiver_id : c.requester_id))));
 
         const { data: profiles, error: pErr } = otherIds.length
           ? await supabase.from('profiles').select('id, first_name, age, location, photos').in('id', otherIds)
@@ -129,7 +120,7 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
         const pMap = new Map<string, ProfileBrief>();
         (profiles ?? []).forEach((p: any) => pMap.set(p.id, p));
 
-        // Last messages — select * then pick first per connection
+        // Last messages (per connection)
         const { data: lastMsgs, error: lErr } = list.length
           ? await supabase
               .from('messages')
@@ -166,9 +157,7 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
       }
     })();
 
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uid]);
 
@@ -181,13 +170,11 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
       setLoadingMsgs(true);
       setError(null);
       try {
-        // Support either schema: connection_id or conversation_id
         const { data, error } = await supabase
           .from('messages')
           .select('*')
-          .or(`connection_id.eq.${selectedConnId},conversation_id.eq.${selectedConnId}`)
+          .eq('connection_id', selectedConnId)
           .order('created_at', { ascending: true });
-
         if (error) throw error;
         if (!active) return;
         setMessages((data ?? []) as UiMessage[]);
@@ -203,114 +190,76 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
 
     load();
 
-    // --- realtime subscriptions (both possible FK columns)
-    // clear existing
-    if (channelConnRef.current) {
-      supabase.removeChannel(channelConnRef.current);
-      channelConnRef.current = null;
-    }
-    if (channelConvRef.current) {
-      supabase.removeChannel(channelConvRef.current);
-      channelConvRef.current = null;
-    }
-
-    const onInsert = (payload: any) => {
-      const m = payload.new as any;
-      const serverText = (m.content ?? m.body ?? '') as string;
-
-      // Only process if it belongs to this thread by either FK
-      const belongs =
-        m.connection_id === selectedConnId || m.conversation_id === selectedConnId;
-      if (!belongs) return;
-
-      // Deduplicate against an optimistic "sending" bubble from this client
-      setMessages((prev) => {
-        const idx = prev.findIndex(
-          (x) =>
-            x._status === 'sending' &&
-            x.sender_id === m.sender_id &&
-            (x.content ?? x.body ?? '') === serverText &&
-            ((x.connection_id && x.connection_id === m.connection_id) ||
-              (x.conversation_id && x.conversation_id === m.conversation_id))
-        );
-        if (idx >= 0) {
-          const clone = [...prev];
-          clone[idx] = {
-            id: m.id,
-            sender_id: m.sender_id,
-            content: m.content,
-            body: m.body,
-            created_at: m.created_at,
-            connection_id: m.connection_id,
-            conversation_id: m.conversation_id,
-            _status: 'sent',
-          };
-          return clone;
-        }
-        // otherwise append
-        return [
-          ...prev,
-          {
-            id: m.id,
-            sender_id: m.sender_id,
-            content: m.content,
-            body: m.body,
-            created_at: m.created_at,
-            connection_id: m.connection_id,
-            conversation_id: m.conversation_id,
-            _status: 'sent',
-          },
-        ];
-      });
-    };
-
-    const chConn = supabase
+    // realtime (connection_id only)
+    if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null; }
+    const ch = supabase
       .channel(`messages:conn:${selectedConnId}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages', filter: `connection_id=eq.${selectedConnId}` },
-        onInsert
+        (payload) => {
+          const m = payload.new as any;
+          const serverText = (m.content ?? m.body ?? '') as string;
+
+          setMessages((prev) => {
+            // match optimistic bubble (same sender, text, and connection)
+            const idx = prev.findIndex(
+              (x) =>
+                x._status === 'sending' &&
+                x.sender_id === m.sender_id &&
+                x.connection_id === m.connection_id &&
+                (x.content ?? x.body ?? '') === serverText
+            );
+            if (idx >= 0) {
+              const clone = [...prev];
+              clone[idx] = {
+                id: m.id,
+                sender_id: m.sender_id,
+                content: m.content,
+                body: m.body,
+                created_at: m.created_at,
+                connection_id: m.connection_id,
+                _status: 'sent',
+              };
+              return clone;
+            }
+            return [
+              ...prev,
+              {
+                id: m.id,
+                sender_id: m.sender_id,
+                content: m.content,
+                body: m.body,
+                created_at: m.created_at,
+                connection_id: m.connection_id,
+                _status: 'sent',
+              },
+            ];
+          });
+        }
       )
       .subscribe();
-
-    const chConv = supabase
-      .channel(`messages:conv:${selectedConnId}`)
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${selectedConnId}` },
-        onInsert
-      )
-      .subscribe();
-
-    channelConnRef.current = chConn;
-    channelConvRef.current = chConv;
+    channelRef.current = ch;
 
     return () => {
-      if (channelConnRef.current) {
-        supabase.removeChannel(channelConnRef.current);
-        channelConnRef.current = null;
-      }
-      if (channelConvRef.current) {
-        supabase.removeChannel(channelConvRef.current);
-        channelConvRef.current = null;
-      }
+      if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null; }
       active = false;
     };
   }, [selectedConnId]);
 
-  // Polling fallback every 8s (helps when websockets are blocked)
+  // Polling fallback (8s)
   useEffect(() => {
     if (!selectedConnId) return;
     const id = setInterval(async () => {
       const { data } = await supabase
         .from('messages')
         .select('*')
-        .or(`connection_id.eq.${selectedConnId},conversation_id.eq.${selectedConnId}`)
+        .eq('connection_id', selectedConnId)
         .order('created_at', { ascending: true });
       if (data) {
-        // keep any local "sending/error" bubbles at the end
+        // keep any local "sending/error" bubbles
         setMessages((prev) => {
-          const locals = prev.filter((m) => m._status && m.id.startsWith('local-'));
+          const locals = prev.filter((m) => m._status && String(m.id).startsWith('local-'));
           return [...(data as UiMessage[]), ...locals];
         });
       }
@@ -318,17 +267,11 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
     return () => clearInterval(id);
   }, [selectedConnId]);
 
-  // scroll to bottom whenever messages change
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, loadingMsgs]);
-
-  // autofocus the composer when a thread opens
+  // scroll + focus
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, loadingMsgs]);
   useEffect(() => {
     inputRef.current?.focus();
-    if (selectedConnId) {
-      setNewMessage(drafts[selectedConnId] ?? '');
-    }
+    if (selectedConnId) setNewMessage(drafts[selectedConnId] ?? '');
   }, [selectedConnId]);
 
   const onChangeDraft = (v: string) => {
@@ -344,7 +287,7 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
 
     setSending(true);
     setNewMessage('');
-    setDrafts((d) => ({ ...d, [selectedConnId]: '' }));
+    if (selectedConnId) setDrafts((d) => ({ ...d, [selectedConnId]: '' }));
 
     // optimistic bubble
     setMessages((prev) => [
@@ -353,43 +296,34 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
         id: clientId,
         _client_id: clientId,
         _status: 'sending',
-        sender_id: uid,
+        sender_id: uid!,
         content: text,
         created_at: nowIso,
-        connection_id: selectedConnId,
+        connection_id: selectedConnId!,
       },
     ]);
 
-    const base = { sender_id: uid };
+    const base = { sender_id: uid!, connection_id: selectedConnId! };
     let inserted: any = null;
     let lastErr: any = null;
 
     const tryInsert = async (payload: Record<string, any>) => {
-      // Try with returning
       const { data, error } = await supabase.from('messages').insert(payload).select().single();
       if (!error && data) return { data };
-      // If returning blocked by RLS, try without returning
+      // Try without returning (RLS may block returning)
       const r2 = await supabase.from('messages').insert(payload);
       if (!r2.error) return { data: { ...payload, created_at: nowIso } };
       return { error: r2.error ?? error };
     };
 
-    // Paths: conn+content, conn+body, conv+content, conv+body
-    const paths = [
-      { ...base, connection_id: selectedConnId, content: text },
-      { ...base, connection_id: selectedConnId, body: text },
-      { ...base, conversation_id: selectedConnId, content: text },
-      { ...base, conversation_id: selectedConnId, body: text },
-    ];
-
-    for (const payload of paths) {
+    // Try content then body
+    for (const payload of [{ ...base, content: text }, { ...base, body: text }]) {
       const { data, error } = await tryInsert(payload);
       if (data) { inserted = data; break; }
       lastErr = error;
     }
 
     if (inserted) {
-      // Mark temp as sent / replace with real row if id present
       setMessages((prev) =>
         prev.map((m) =>
           m.id === clientId
@@ -400,19 +334,14 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
                 created_at: inserted.created_at ?? m.created_at,
                 content: inserted.content ?? m.content,
                 body: inserted.body ?? m.body,
-                connection_id: inserted.connection_id ?? m.connection_id,
-                conversation_id: inserted.conversation_id ?? (m as any).conversation_id,
               }
             : m
         )
       );
     } else {
-      // Mark the optimistic as error and restore draft
-      setMessages((prev) =>
-        prev.map((m) => (m.id === clientId ? { ...m, _status: 'error' } : m))
-      );
+      setMessages((prev) => prev.map((m) => (m.id === clientId ? { ...m, _status: 'error' } : m)));
       setNewMessage(text);
-      setDrafts((d) => ({ ...d, [selectedConnId!]: text }));
+      if (selectedConnId) setDrafts((d) => ({ ...d, [selectedConnId]: text }));
       toast.error(friendly(lastErr?.message));
       console.error('send message error:', lastErr);
     }
@@ -427,7 +356,6 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
     [convList, selectedConnId]
   );
 
-  // Avatar helpers
   const nameOfOther = activeOther?.first_name || 'User';
   const avatarOfOther = activeOther?.photos?.[0] || '';
   const initialOfOther = (nameOfOther || 'U').trim().charAt(0).toUpperCase();
@@ -589,7 +517,6 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
                                     type="button"
                                     className="text-[11px] underline"
                                     onClick={() => {
-                                      // simple retry: move text back into input and remove failed bubble
                                       const retryText = (message.content ?? message.body ?? '').trim();
                                       setNewMessage(retryText);
                                       if (selectedConnId) {
@@ -670,4 +597,3 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
 };
 
 export default Messages;
-
