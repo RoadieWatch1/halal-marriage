@@ -27,10 +27,9 @@ type ProfileBrief = {
 type MessageRow = {
   id: string;
   sender_id: string;
-  content?: string | null; // canonical text col (preferred)
-  body?: string | null;    // alt col if your table still uses it
+  content: string | null;       // canonical text column
   created_at: string;
-  connection_id?: string | null;
+  connection_id: string;
 };
 
 type ConversationItem = {
@@ -40,7 +39,7 @@ type ConversationItem = {
 };
 
 interface MessagesProps {
-  user: any;
+  user: { id: string; firstName?: string } | null;
   initialConnectionId?: string; // open a specific thread
   onBack?: () => void;          // navigate back (e.g., to dashboard)
 }
@@ -60,9 +59,7 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    setUid(user?.id ?? null);
-  }, [user?.id]);
+  useEffect(() => setUid(user?.id ?? null), [user?.id]);
 
   const handleBack = () => {
     if (onBack) return onBack();
@@ -113,11 +110,11 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
         const pMap = new Map<string, ProfileBrief>();
         (profiles ?? []).forEach((p: any) => pMap.set(p.id, p));
 
-        // Last messages — pick the newest per connection_id
+        // Pull newest message per connection (by created_at DESC)
         const { data: lastMsgs, error: lErr } = list.length
           ? await supabase
               .from('messages')
-              .select('*')
+              .select('connection_id, content, created_at')
               .in('connection_id', list.map((c) => c.id))
               .order('created_at', { ascending: false })
           : ({ data: [] } as any);
@@ -126,8 +123,7 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
         const firstByConn = new Map<string, { text: string; created_at: string }>();
         (lastMsgs ?? []).forEach((m: any) => {
           if (!firstByConn.has(m.connection_id)) {
-            const text = (m.content ?? m.body ?? '') as string;
-            firstByConn.set(m.connection_id, { text, created_at: m.created_at as string });
+            firstByConn.set(m.connection_id, { text: (m.content ?? '') as string, created_at: m.created_at as string });
           }
         });
 
@@ -157,7 +153,7 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uid]);
 
-  // Load messages for selected conversation + subscribe realtime (with polling fallback)
+  // Load messages for selected conversation + realtime (with polling fallback)
   useEffect(() => {
     if (!selectedConnId) return;
     let active = true;
@@ -168,7 +164,7 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
       try {
         const { data, error } = await supabase
           .from('messages')
-          .select('id, sender_id, content, body, created_at, connection_id')
+          .select('id, sender_id, content, created_at, connection_id')
           .eq('connection_id', selectedConnId)
           .order('created_at', { ascending: true });
 
@@ -209,13 +205,12 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
         { event: 'INSERT', schema: 'public', table: 'messages', filter: `connection_id=eq.${selectedConnId}` },
         (payload) => {
           const m = payload.new as any;
-          const text = (m.content ?? m.body ?? '') as string;
           setMessages((prev) => [
             ...prev,
             {
               id: m.id,
               sender_id: m.sender_id,
-              content: text,
+              content: m.content,
               created_at: m.created_at,
               connection_id: m.connection_id,
             },
@@ -261,45 +256,22 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
     setSending(true);
     setNewMessage(''); // optimistic clear
 
-    const base = { connection_id: selectedConnId, sender_id: uid, created_at: new Date().toISOString() };
-    let inserted: any = null;
-    let err: any = null;
+    const { data, error } = await supabase
+      .from('messages')
+      .insert({ connection_id: selectedConnId, sender_id: uid, content: text })
+      .select('id, sender_id, content, created_at, connection_id')
+      .single();
 
-    // Prefer `content` column. Fallback to `body` if needed.
-    let res = await supabase.from('messages').insert({ ...base, content: text }).select().single();
-
-    if (res.error) {
-      // If your schema only has `body`, try that
-      const res2 = await supabase.from('messages').insert({ ...base, body: text }).select().single();
-      if (res2.error) {
-        err = res2.error;
-      } else {
-        inserted = res2.data;
-      }
-    } else {
-      inserted = res.data;
+    if (error) {
+      setNewMessage(text); // restore so they can retry
+      toast.error(error.message || 'Could not send message');
+      console.error('[messages.insert] error:', error);
+      setSending(false);
+      return;
     }
 
-    if (inserted) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: inserted.id,
-          sender_id: inserted.sender_id,
-          content: inserted.content ?? inserted.body ?? text,
-          created_at: inserted.created_at,
-          connection_id: inserted.connection_id,
-        },
-      ]);
-    } else {
-      setNewMessage(text); // restore so they can retry
-      toast.error(err?.message || 'Could not send message');
-      console.error('[messages.insert] error:', {
-        message: err?.message,
-        details: err?.details,
-        hint: err?.hint,
-        code: err?.code,
-      });
+    if (data) {
+      setMessages((prev) => [...prev, data as MessageRow]);
     }
 
     setSending(false);
@@ -439,7 +411,7 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
                     ) : (
                       messages.map((message) => {
                         const isMine = message.sender_id === uid;
-                        const text = (message.content ?? message.body ?? '').trim();
+                        const text = (message.content ?? '').trim();
 
                         return (
                           <div
