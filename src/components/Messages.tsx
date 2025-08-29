@@ -12,7 +12,7 @@ type ConnectionRow = {
   id: string;
   requester_id: string;
   receiver_id: string;
-  status: 'pending' | 'accepted' | 'declined';
+  status: 'pending' | 'accepted' | 'declined' | 'rejected' | 'blocked';
   created_at: string;
 };
 
@@ -24,19 +24,19 @@ type ProfileBrief = {
   photos: string[] | null;
 };
 
-type ConversationItem = {
-  conn: ConnectionRow;
-  other: ProfileBrief | null;
-  lastMessage?: { text: string; created_at: string } | null;
-};
-
 type MessageRow = {
   id: string;
   sender_id: string;
   content?: string | null; // some schemas
-  body?: string | null;    // fallback column name
+  body?: string | null;    // alt column
   created_at: string;
   connection_id?: string;
+};
+
+type ConversationItem = {
+  conn: ConnectionRow;
+  other: ProfileBrief | null;
+  lastMessage?: { text: string; created_at: string } | null;
 };
 
 interface MessagesProps {
@@ -49,6 +49,7 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
   const [uid, setUid] = useState<string | null>(null);
   const [loadingConvs, setLoadingConvs] = useState(true);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
+  const [sending, setSending] = useState(false);
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [selectedConnId, setSelectedConnId] = useState<string | null>(initialConnectionId ?? null);
   const [messages, setMessages] = useState<MessageRow[]>([]);
@@ -100,14 +101,17 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
         );
 
         const { data: profiles, error: pErr } = otherIds.length
-          ? await supabase.from('profiles').select('id, first_name, age, location, photos').in('id', otherIds)
+          ? await supabase
+              .from('profiles')
+              .select('id, first_name, age, location, photos')
+              .in('id', otherIds)
           : ({ data: [] } as any);
         if (pErr) throw pErr;
 
         const pMap = new Map<string, ProfileBrief>();
         (profiles ?? []).forEach((p: any) => pMap.set(p.id, p));
 
-        // Last messages — select * to avoid missing-column errors
+        // Last messages (per connection)
         const { data: lastMsgs, error: lErr } = list.length
           ? await supabase
               .from('messages')
@@ -133,7 +137,6 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
 
         if (!active) return;
         setConversations(convs);
-
         if (!selectedConnId && convs.length > 0) setSelectedConnId(convs[0].conn.id);
       } catch (e: any) {
         if (!active) return;
@@ -162,7 +165,7 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
       try {
         const { data, error } = await supabase
           .from('messages')
-          .select('*') // avoid missing-column errors (content vs body)
+          .select('id, sender_id, content, body, created_at, connection_id')
           .eq('connection_id', selectedConnId)
           .order('created_at', { ascending: true });
 
@@ -181,7 +184,7 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
 
     load();
 
-    // realtime subscription
+    // realtime subscription (best-effort)
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
       channelRef.current = null;
@@ -224,28 +227,48 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
   }, [messages, loadingMsgs]);
 
   const handleSendMessage = async () => {
-    if (!newMessage.trim() || !selectedConnId || !uid) return;
+    if (!newMessage.trim() || !selectedConnId || !uid || sending) return;
     const text = newMessage.trim();
 
-    // clear optimistically (realtime will append on success)
-    setNewMessage('');
+    setSending(true);
+    setNewMessage(''); // optimistic clear
 
-    // Try inserting into `content`; if that column doesn't exist, fallback to `body`
-    let { error } = await supabase
-      .from('messages')
-      .insert({ connection_id: selectedConnId, sender_id: uid, content: text });
+    const base = { connection_id: selectedConnId, sender_id: uid };
+    let inserted: any = null;
+    let err: any = null;
 
-    if (error && /content.*does not exist/i.test(error.message || '')) {
-      const res2 = await supabase
-        .from('messages')
-        .insert({ connection_id: selectedConnId, sender_id: uid, body: text });
-      error = res2.error ?? null;
+    // Try `content`, then try `body` if that fails — append to UI on success
+    let res = await supabase.from('messages').insert({ ...base, content: text }).select().single();
+    if (res.error) {
+      const res2 = await supabase.from('messages').insert({ ...base, body: text }).select().single();
+      if (res2.error) {
+        err = res2.error;
+      } else {
+        inserted = res2.data;
+      }
+    } else {
+      inserted = res.data;
     }
 
-    if (error) {
+    if (inserted) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: inserted.id,
+          sender_id: inserted.sender_id,
+          content: inserted.content,
+          body: inserted.body,
+          created_at: inserted.created_at,
+          connection_id: inserted.connection_id,
+        },
+      ]);
+      // Realtime will also deliver; duplicates are unlikely since we append only once here.
+    } else {
       setNewMessage(text); // restore so they can retry
-      toast.error(error.message || 'Could not send message');
+      toast.error(err?.message || 'Could not send message');
     }
+
+    setSending(false);
   };
 
   const convList = useMemo(() => conversations, [conversations]);
@@ -254,7 +277,7 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
     [convList, selectedConnId]
   );
 
-  // --- Avatar helpers (safe for Tailwind purge; use inline sizes)
+  // Avatar helpers
   const nameOfOther = activeOther?.first_name || 'User';
   const avatarOfOther = activeOther?.photos?.[0] || '';
   const initialOfOther = (nameOfOther || 'U').trim().charAt(0).toUpperCase();
@@ -289,7 +312,6 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
   };
 
   return (
-    // Extra bottom padding so fixed Back button never overlaps
     <div className="min-h-screen theme-bg p-4 pb-28 md:pb-10">
       <div className="max-w-6xl mx-auto space-y-4">
         {/* Top back button */}
@@ -300,7 +322,6 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
           </Button>
         </div>
 
-        {/* Taller responsive layout so composer sits higher and is always visible */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 min-h-[70vh]">
           {/* Conversations List */}
           <Card className="lg:col-span-1 theme-card">
@@ -372,7 +393,7 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
                   </div>
                 </CardHeader>
 
-                {/* Messages (scrolls) + Composer (sticky & raised) */}
+                {/* Messages + Composer */}
                 <CardContent className="p-0 flex-1 flex flex-col min-h-[60vh]">
                   <div className="flex-1 p-4 space-y-4 overflow-y-auto">
                     {loadingMsgs ? (
@@ -391,7 +412,6 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
                             key={message.id}
                             className={`flex ${isMine ? 'justify-end' : 'justify-start'} items-end gap-2`}
                           >
-                            {/* their avatar beside their messages */}
                             {!isMine && (
                               <Avatar
                                 url={avatarOfOther}
@@ -418,7 +438,6 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
                     <div ref={bottomRef} />
                   </div>
 
-                  {/* Raised, high-contrast composer (sits ABOVE the very bottom) */}
                   <div className="sticky bottom-3 mx-3 mb-3 rounded-xl bg-[rgba(31,41,55,0.95)] border border-border shadow-lg backdrop-blur p-3 z-10">
                     <div className="flex gap-2">
                       <Input
@@ -427,6 +446,7 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
                         placeholder="Type your message…"
                         aria-label="Message"
                         className="h-12 text-base bg-[rgba(255,255,255,0.08)] text-foreground placeholder-[rgba(248,247,242,.70)] border-border"
+                        disabled={sending}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' && !e.shiftKey) {
                             e.preventDefault();
@@ -438,9 +458,9 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
                         onClick={handleSendMessage}
                         className="theme-button h-12 px-5"
                         aria-label="Send message"
-                        disabled={!newMessage.trim()}
+                        disabled={sending || !newMessage.trim()}
                       >
-                        <Send className="h-4 w-4 mr-2" />
+                        {sending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
                         Send
                       </Button>
                     </div>
