@@ -28,9 +28,10 @@ type MessageRow = {
   id: string;
   sender_id: string;
   content?: string | null; // some schemas
-  body?: string | null;    // alt column
+  body?: string | null;    // alternative column
   created_at: string;
-  connection_id?: string;
+  connection_id?: string | null;
+  conversation_id?: string | null; // alternative FK
 };
 
 type ConversationItem = {
@@ -46,7 +47,7 @@ interface MessagesProps {
 }
 
 const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }) => {
-  const [uid, setUid] = useState<string | null>(null);
+  const [uid, setUid] = useState<string | null>(user?.id ?? null);
   const [loadingConvs, setLoadingConvs] = useState(true);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
   const [sending, setSending] = useState(false);
@@ -55,8 +56,15 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
   const [messages, setMessages] = useState<MessageRow[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+
+  // Two channels: one for connection_id, one for conversation_id (support either schema)
+  const channelConnRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const channelConvRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setUid(user?.id ?? null);
+  }, [user?.id]);
 
   const handleBack = () => {
     if (onBack) return onBack();
@@ -72,10 +80,6 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
   useEffect(() => {
     if (initialConnectionId) setSelectedConnId(initialConnectionId);
   }, [initialConnectionId]);
-
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setUid(data.user?.id ?? null));
-  }, []);
 
   // Load conversations (accepted only)
   useEffect(() => {
@@ -111,7 +115,7 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
         const pMap = new Map<string, ProfileBrief>();
         (profiles ?? []).forEach((p: any) => pMap.set(p.id, p));
 
-        // Last messages (per connection)
+        // Last messages — select * then pick first per connection
         const { data: lastMsgs, error: lErr } = list.length
           ? await supabase
               .from('messages')
@@ -163,10 +167,11 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
       setLoadingMsgs(true);
       setError(null);
       try {
+        // Support either schema: connection_id or conversation_id
         const { data, error } = await supabase
           .from('messages')
-          .select('id, sender_id, content, body, created_at, connection_id')
-          .eq('connection_id', selectedConnId)
+          .select('*')
+          .or(`connection_id.eq.${selectedConnId},conversation_id.eq.${selectedConnId}`)
           .order('created_at', { ascending: true });
 
         if (error) throw error;
@@ -184,38 +189,65 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
 
     load();
 
-    // realtime subscription (best-effort)
-    if (channelRef.current) {
-      supabase.removeChannel(channelRef.current);
-      channelRef.current = null;
+    // --- realtime subscriptions (both possible FK columns)
+    // clear existing
+    if (channelConnRef.current) {
+      supabase.removeChannel(channelConnRef.current);
+      channelConnRef.current = null;
     }
-    const ch = supabase
-      .channel(`messages:${selectedConnId}`)
+    if (channelConvRef.current) {
+      supabase.removeChannel(channelConvRef.current);
+      channelConvRef.current = null;
+    }
+
+    const onInsert = (payload: any) => {
+      const m = payload.new as any;
+      // Only append if it belongs to this thread by either FK
+      if (m.connection_id !== selectedConnId && m.conversation_id !== selectedConnId) return;
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: m.id,
+          sender_id: m.sender_id,
+          content: m.content,
+          body: m.body,
+          created_at: m.created_at,
+          connection_id: m.connection_id,
+          conversation_id: m.conversation_id,
+        },
+      ]);
+    };
+
+    const chConn = supabase
+      .channel(`messages:conn:${selectedConnId}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages', filter: `connection_id=eq.${selectedConnId}` },
-        (payload) => {
-          const m = payload.new as any;
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: m.id,
-              sender_id: m.sender_id,
-              content: m.content,
-              body: m.body,
-              created_at: m.created_at,
-              connection_id: m.connection_id,
-            },
-          ]);
-        }
+        onInsert
       )
       .subscribe();
-    channelRef.current = ch;
+
+    const chConv = supabase
+      .channel(`messages:conv:${selectedConnId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${selectedConnId}` },
+        onInsert
+      )
+      .subscribe();
+
+    channelConnRef.current = chConn;
+    channelConvRef.current = chConv;
 
     return () => {
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-        channelRef.current = null;
+      if (channelConnRef.current) {
+        supabase.removeChannel(channelConnRef.current);
+        channelConnRef.current = null;
+      }
+      if (channelConvRef.current) {
+        supabase.removeChannel(channelConvRef.current);
+        channelConvRef.current = null;
       }
       active = false;
     };
@@ -233,16 +265,69 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
     setSending(true);
     setNewMessage(''); // optimistic clear
 
-    const base = { connection_id: selectedConnId, sender_id: uid };
+    const base = { sender_id: uid };
     let inserted: any = null;
     let err: any = null;
 
-    // Try `content`, then try `body` if that fails — append to UI on success
-    let res = await supabase.from('messages').insert({ ...base, content: text }).select().single();
+    const nowIso = new Date().toISOString();
+
+    // Helper: optimistic append if we can't select the row due to RLS returning
+    const optimisticAppend = (fkKey: 'connection_id' | 'conversation_id') => {
+      const temp: MessageRow = {
+        id: `local-${Date.now()}`,
+        sender_id: uid,
+        content: text,
+        created_at: nowIso,
+        connection_id: fkKey === 'connection_id' ? selectedConnId : null,
+        conversation_id: fkKey === 'conversation_id' ? selectedConnId : null,
+      };
+      setMessages((prev) => [...prev, temp]);
+    };
+
+    // Try 1: connection_id + content with returning
+    let res = await supabase.from('messages').insert({ ...base, connection_id: selectedConnId, content: text }).select().single();
+
     if (res.error) {
-      const res2 = await supabase.from('messages').insert({ ...base, body: text }).select().single();
+      // If column doesn't exist OR returning blocked, try fallback paths
+
+      // Try 1b: connection_id + body with returning
+      const res2 = await supabase.from('messages').insert({ ...base, connection_id: selectedConnId, body: text }).select().single();
+
       if (res2.error) {
-        err = res2.error;
+        // Try 2: conversation_id path (some schemas)
+        const r3 = await supabase.from('messages').insert({ ...base, conversation_id: selectedConnId, content: text }).select().single();
+
+        if (r3.error) {
+          const r4 = await supabase.from('messages').insert({ ...base, conversation_id: selectedConnId, body: text }).select().single();
+
+          if (r4.error) {
+            // Last resort: insert without returning (RLS may block returning but allow insert)
+            // We'll do it for both FK possibilities and append optimistically on success
+
+            // 2a no-returning (connection_id)
+            const r5 = await supabase.from('messages').insert({ ...base, connection_id: selectedConnId, content: text });
+            if (!r5.error) {
+              optimisticAppend('connection_id');
+              setSending(false);
+              return;
+            }
+
+            // 2b no-returning (conversation_id)
+            const r6 = await supabase.from('messages').insert({ ...base, conversation_id: selectedConnId, content: text });
+            if (!r6.error) {
+              optimisticAppend('conversation_id');
+              setSending(false);
+              return;
+            }
+
+            // Still failed — show last error
+            err = r4.error ?? r3.error ?? res2.error ?? res.error;
+          } else {
+            inserted = r4.data;
+          }
+        } else {
+          inserted = r3.data;
+        }
       } else {
         inserted = res2.data;
       }
@@ -260,12 +345,13 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
           body: inserted.body,
           created_at: inserted.created_at,
           connection_id: inserted.connection_id,
+          conversation_id: inserted.conversation_id,
         },
       ]);
-      // Realtime will also deliver; duplicates are unlikely since we append only once here.
     } else {
       setNewMessage(text); // restore so they can retry
       toast.error(err?.message || 'Could not send message');
+      console.error('send message error:', err);
     }
 
     setSending(false);
@@ -378,7 +464,7 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
           <Card className="lg:col-span-2 theme-card flex flex-col">
             {selectedConnId ? (
               <>
-                {/* Header with avatar + name */}
+                {/* Header */}
                 <CardHeader className="border-b border-border">
                   <div className="flex items-center gap-3">
                     <Avatar url={avatarOfOther} fallback={initialOfOther} size={48} alt={`${nameOfOther} avatar large`} />
