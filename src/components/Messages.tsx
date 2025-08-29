@@ -34,6 +34,9 @@ type MessageRow = {
   conversation_id?: string | null; // alternative FK
 };
 
+type UiMessageStatus = 'sending' | 'sent' | 'error';
+type UiMessage = MessageRow & { _client_id?: string; _status?: UiMessageStatus };
+
 type ConversationItem = {
   conn: ConnectionRow;
   other: ProfileBrief | null;
@@ -46,6 +49,17 @@ interface MessagesProps {
   onBack?: () => void;          // navigate back (e.g., to dashboard)
 }
 
+const friendly = (raw?: string) => {
+  const m = (raw || '').toLowerCase();
+  if (m.includes('permission denied') || m.includes('violates row-level security')) {
+    return 'You are not allowed to send messages to this user yet (connection must be accepted).';
+  }
+  if (m.includes('foreign key') || m.includes('connection_id') || m.includes('conversation_id')) {
+    return 'This conversation is not available. Try opening it again from Connections.';
+  }
+  return raw || 'Could not send message';
+};
+
 const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }) => {
   const [uid, setUid] = useState<string | null>(user?.id ?? null);
   const [loadingConvs, setLoadingConvs] = useState(true);
@@ -53,14 +67,17 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
   const [sending, setSending] = useState(false);
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [selectedConnId, setSelectedConnId] = useState<string | null>(initialConnectionId ?? null);
-  const [messages, setMessages] = useState<MessageRow[]>([]);
+  const [messages, setMessages] = useState<UiMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
 
-  // Two channels: one for connection_id, one for conversation_id (support either schema)
+  // Realtime channels (support conn_id & conv_id schemas)
   const channelConnRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const channelConvRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setUid(user?.id ?? null);
@@ -105,10 +122,7 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
         );
 
         const { data: profiles, error: pErr } = otherIds.length
-          ? await supabase
-              .from('profiles')
-              .select('id, first_name, age, location, photos')
-              .in('id', otherIds)
+          ? await supabase.from('profiles').select('id, first_name, age, location, photos').in('id', otherIds)
           : ({ data: [] } as any);
         if (pErr) throw pErr;
 
@@ -176,7 +190,7 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
 
         if (error) throw error;
         if (!active) return;
-        setMessages((data ?? []) as MessageRow[]);
+        setMessages((data ?? []) as UiMessage[]);
       } catch (e: any) {
         if (!active) return;
         const msg = e?.message || 'Failed to load messages';
@@ -202,21 +216,52 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
 
     const onInsert = (payload: any) => {
       const m = payload.new as any;
-      // Only append if it belongs to this thread by either FK
-      if (m.connection_id !== selectedConnId && m.conversation_id !== selectedConnId) return;
+      const serverText = (m.content ?? m.body ?? '') as string;
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: m.id,
-          sender_id: m.sender_id,
-          content: m.content,
-          body: m.body,
-          created_at: m.created_at,
-          connection_id: m.connection_id,
-          conversation_id: m.conversation_id,
-        },
-      ]);
+      // Only process if it belongs to this thread by either FK
+      const belongs =
+        m.connection_id === selectedConnId || m.conversation_id === selectedConnId;
+      if (!belongs) return;
+
+      // Deduplicate against an optimistic "sending" bubble from this client
+      setMessages((prev) => {
+        const idx = prev.findIndex(
+          (x) =>
+            x._status === 'sending' &&
+            x.sender_id === m.sender_id &&
+            (x.content ?? x.body ?? '') === serverText &&
+            ((x.connection_id && x.connection_id === m.connection_id) ||
+              (x.conversation_id && x.conversation_id === m.conversation_id))
+        );
+        if (idx >= 0) {
+          const clone = [...prev];
+          clone[idx] = {
+            id: m.id,
+            sender_id: m.sender_id,
+            content: m.content,
+            body: m.body,
+            created_at: m.created_at,
+            connection_id: m.connection_id,
+            conversation_id: m.conversation_id,
+            _status: 'sent',
+          };
+          return clone;
+        }
+        // otherwise append
+        return [
+          ...prev,
+          {
+            id: m.id,
+            sender_id: m.sender_id,
+            content: m.content,
+            body: m.body,
+            created_at: m.created_at,
+            connection_id: m.connection_id,
+            conversation_id: m.conversation_id,
+            _status: 'sent',
+          },
+        ];
+      });
     };
 
     const chConn = supabase
@@ -253,108 +298,127 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
     };
   }, [selectedConnId]);
 
+  // Polling fallback every 8s (helps when websockets are blocked)
+  useEffect(() => {
+    if (!selectedConnId) return;
+    const id = setInterval(async () => {
+      const { data } = await supabase
+        .from('messages')
+        .select('*')
+        .or(`connection_id.eq.${selectedConnId},conversation_id.eq.${selectedConnId}`)
+        .order('created_at', { ascending: true });
+      if (data) {
+        // keep any local "sending/error" bubbles at the end
+        setMessages((prev) => {
+          const locals = prev.filter((m) => m._status && m.id.startsWith('local-'));
+          return [...(data as UiMessage[]), ...locals];
+        });
+      }
+    }, 8000);
+    return () => clearInterval(id);
+  }, [selectedConnId]);
+
   // scroll to bottom whenever messages change
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loadingMsgs]);
 
+  // autofocus the composer when a thread opens
+  useEffect(() => {
+    inputRef.current?.focus();
+    if (selectedConnId) {
+      setNewMessage(drafts[selectedConnId] ?? '');
+    }
+  }, [selectedConnId]);
+
+  const onChangeDraft = (v: string) => {
+    setNewMessage(v);
+    if (selectedConnId) setDrafts((d) => ({ ...d, [selectedConnId]: v }));
+  };
+
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedConnId || !uid || sending) return;
     const text = newMessage.trim();
-
-    setSending(true);
-    setNewMessage(''); // optimistic clear
-
-    const base = { sender_id: uid };
-    let inserted: any = null;
-    let err: any = null;
-
+    const clientId = `local-${Date.now()}`;
     const nowIso = new Date().toISOString();
 
-    // Helper: optimistic append if we can't select the row due to RLS returning
-    const optimisticAppend = (fkKey: 'connection_id' | 'conversation_id') => {
-      const temp: MessageRow = {
-        id: `local-${Date.now()}`,
+    setSending(true);
+    setNewMessage('');
+    setDrafts((d) => ({ ...d, [selectedConnId]: '' }));
+
+    // optimistic bubble
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: clientId,
+        _client_id: clientId,
+        _status: 'sending',
         sender_id: uid,
         content: text,
         created_at: nowIso,
-        connection_id: fkKey === 'connection_id' ? selectedConnId : null,
-        conversation_id: fkKey === 'conversation_id' ? selectedConnId : null,
-      };
-      setMessages((prev) => [...prev, temp]);
+        connection_id: selectedConnId,
+      },
+    ]);
+
+    const base = { sender_id: uid };
+    let inserted: any = null;
+    let lastErr: any = null;
+
+    const tryInsert = async (payload: Record<string, any>) => {
+      // Try with returning
+      const { data, error } = await supabase.from('messages').insert(payload).select().single();
+      if (!error && data) return { data };
+      // If returning blocked by RLS, try without returning
+      const r2 = await supabase.from('messages').insert(payload);
+      if (!r2.error) return { data: { ...payload, created_at: nowIso } };
+      return { error: r2.error ?? error };
     };
 
-    // Try 1: connection_id + content with returning
-    let res = await supabase.from('messages').insert({ ...base, connection_id: selectedConnId, content: text }).select().single();
+    // Paths: conn+content, conn+body, conv+content, conv+body
+    const paths = [
+      { ...base, connection_id: selectedConnId, content: text },
+      { ...base, connection_id: selectedConnId, body: text },
+      { ...base, conversation_id: selectedConnId, content: text },
+      { ...base, conversation_id: selectedConnId, body: text },
+    ];
 
-    if (res.error) {
-      // If column doesn't exist OR returning blocked, try fallback paths
-
-      // Try 1b: connection_id + body with returning
-      const res2 = await supabase.from('messages').insert({ ...base, connection_id: selectedConnId, body: text }).select().single();
-
-      if (res2.error) {
-        // Try 2: conversation_id path (some schemas)
-        const r3 = await supabase.from('messages').insert({ ...base, conversation_id: selectedConnId, content: text }).select().single();
-
-        if (r3.error) {
-          const r4 = await supabase.from('messages').insert({ ...base, conversation_id: selectedConnId, body: text }).select().single();
-
-          if (r4.error) {
-            // Last resort: insert without returning (RLS may block returning but allow insert)
-            // We'll do it for both FK possibilities and append optimistically on success
-
-            // 2a no-returning (connection_id)
-            const r5 = await supabase.from('messages').insert({ ...base, connection_id: selectedConnId, content: text });
-            if (!r5.error) {
-              optimisticAppend('connection_id');
-              setSending(false);
-              return;
-            }
-
-            // 2b no-returning (conversation_id)
-            const r6 = await supabase.from('messages').insert({ ...base, conversation_id: selectedConnId, content: text });
-            if (!r6.error) {
-              optimisticAppend('conversation_id');
-              setSending(false);
-              return;
-            }
-
-            // Still failed — show last error
-            err = r4.error ?? r3.error ?? res2.error ?? res.error;
-          } else {
-            inserted = r4.data;
-          }
-        } else {
-          inserted = r3.data;
-        }
-      } else {
-        inserted = res2.data;
-      }
-    } else {
-      inserted = res.data;
+    for (const payload of paths) {
+      const { data, error } = await tryInsert(payload);
+      if (data) { inserted = data; break; }
+      lastErr = error;
     }
 
     if (inserted) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: inserted.id,
-          sender_id: inserted.sender_id,
-          content: inserted.content,
-          body: inserted.body,
-          created_at: inserted.created_at,
-          connection_id: inserted.connection_id,
-          conversation_id: inserted.conversation_id,
-        },
-      ]);
+      // Mark temp as sent / replace with real row if id present
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === clientId
+            ? {
+                ...m,
+                _status: 'sent',
+                id: inserted.id ?? m.id,
+                created_at: inserted.created_at ?? m.created_at,
+                content: inserted.content ?? m.content,
+                body: inserted.body ?? m.body,
+                connection_id: inserted.connection_id ?? m.connection_id,
+                conversation_id: inserted.conversation_id ?? (m as any).conversation_id,
+              }
+            : m
+        )
+      );
     } else {
-      setNewMessage(text); // restore so they can retry
-      toast.error(err?.message || 'Could not send message');
-      console.error('send message error:', err);
+      // Mark the optimistic as error and restore draft
+      setMessages((prev) =>
+        prev.map((m) => (m.id === clientId ? { ...m, _status: 'error' } : m))
+      );
+      setNewMessage(text);
+      setDrafts((d) => ({ ...d, [selectedConnId!]: text }));
+      toast.error(friendly(lastErr?.message));
+      console.error('send message error:', lastErr);
     }
 
     setSending(false);
+    inputRef.current?.focus();
   };
 
   const convList = useMemo(() => conversations, [conversations]);
@@ -513,9 +577,32 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
                               }`}
                             >
                               <p className="text-sm">{text || '…'}</p>
-                              <p className={`text-xs mt-1 ${isMine ? 'text-white/70' : 'theme-text-muted'}`}>
-                                {new Date(message.created_at).toLocaleString()}
-                              </p>
+                              <div className="flex items-center gap-2 mt-1">
+                                <p className={`text-xs ${isMine ? 'text-white/70' : 'theme-text-muted'}`}>
+                                  {new Date(message.created_at).toLocaleString()}
+                                </p>
+                                {isMine && message._status === 'sending' && (
+                                  <span className="text-[11px] opacity-80">sending…</span>
+                                )}
+                                {isMine && message._status === 'error' && (
+                                  <button
+                                    type="button"
+                                    className="text-[11px] underline"
+                                    onClick={() => {
+                                      // simple retry: move text back into input and remove failed bubble
+                                      const retryText = (message.content ?? message.body ?? '').trim();
+                                      setNewMessage(retryText);
+                                      if (selectedConnId) {
+                                        setDrafts((d) => ({ ...d, [selectedConnId]: retryText }));
+                                      }
+                                      setMessages((prev) => prev.filter((m) => m.id !== message.id));
+                                      inputRef.current?.focus();
+                                    }}
+                                  >
+                                    retry
+                                  </button>
+                                )}
+                              </div>
                             </div>
                           </div>
                         );
@@ -527,9 +614,10 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
                   <div className="sticky bottom-3 mx-3 mb-3 rounded-xl bg-[rgba(31,41,55,0.95)] border border-border shadow-lg backdrop-blur p-3 z-10">
                     <div className="flex gap-2">
                       <Input
+                        ref={inputRef}
                         value={newMessage}
-                        onChange={(e) => setNewMessage(e.target.value)}
-                        placeholder="Type your message…"
+                        onChange={(e) => onChangeDraft(e.target.value)}
+                        placeholder="Type your message…  •  Enter to send  •  Shift+Enter for new line"
                         aria-label="Message"
                         className="h-12 text-base bg-[rgba(255,255,255,0.08)] text-foreground placeholder-[rgba(248,247,242,.70)] border-border"
                         disabled={sending}
@@ -582,3 +670,4 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
 };
 
 export default Messages;
+
