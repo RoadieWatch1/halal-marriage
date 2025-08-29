@@ -2,47 +2,44 @@
 import { createClient } from '@supabase/supabase-js';
 
 /**
- * Strip any stray whitespace (CR, LF, tabs, spaces) that can sneak in
- * when copying keys into .env files and cause `%0A` in WebSocket URLs.
+ * Clean env strings so we never send `%0A` (newline) in the WebSocket URL.
+ * - trims leading/trailing whitespace
+ * - removes CR/LF/TAB and stray spaces inside (common paste artifact)
  */
 const clean = (v?: string) => String(v ?? '').replace(/[\r\n\t ]+/g, '').trim();
 
-// Vite-style env (preferred for this project)
-const VITE_URL = (import.meta as any)?.env?.VITE_SUPABASE_URL as string | undefined;
-const VITE_PUB = (import.meta as any)?.env?.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
-const VITE_ANON = (import.meta as any)?.env?.VITE_SUPABASE_ANON_KEY as string | undefined;
+/** Prefer Vite envs; gracefully fall back to Next-style if present */
+const VITE = (import.meta as any)?.env ?? {};
+const rawUrl =
+  (VITE.VITE_SUPABASE_URL as string | undefined) ??
+  (VITE.PUBLIC_SUPABASE_URL as string | undefined) ??
+  (typeof process !== 'undefined' ? (process.env.NEXT_PUBLIC_SUPABASE_URL as string | undefined) : undefined) ??
+  '';
 
-// Next.js-style fallbacks (harmless if unused)
-const NEXT_URL = (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_SUPABASE_URL : undefined) as
-  | string
-  | undefined;
-const NEXT_PUB = (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY : undefined) as
-  | string
-  | undefined;
-const NEXT_ANON = (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY : undefined) as
-  | string
-  | undefined;
+/** Prefer new Publishable key; fall back to legacy anon if needed */
+const rawKey =
+  (VITE.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined) ??
+  (VITE.VITE_SUPABASE_ANON_KEY as string | undefined) ??
+  (VITE.PUBLIC_SUPABASE_PUBLISHABLE_KEY as string | undefined) ??
+  (VITE.PUBLIC_SUPABASE_ANON_KEY as string | undefined) ??
+  (typeof process !== 'undefined' ? (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY as string | undefined) : undefined) ??
+  (typeof process !== 'undefined' ? (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string | undefined) : undefined) ??
+  '';
 
-// Prefer new Publishable key; fall back to legacy anon if needed
-const RAW_URL = VITE_URL ?? NEXT_URL ?? '';
-const RAW_KEY = VITE_PUB ?? NEXT_PUB ?? VITE_ANON ?? NEXT_ANON ?? '';
-
-const SUPABASE_URL = clean(RAW_URL);
-const SUPABASE_KEY = clean(RAW_KEY);
+/** Final sanitized values */
+const SUPABASE_URL = clean(rawUrl).replace(/\/+$/, ''); // strip trailing slashes
+const SUPABASE_KEY = clean(rawKey);
 
 if (!SUPABASE_URL || !SUPABASE_KEY) {
-  // Visible in dev console to catch misconfig quickly (don’t throw)
+  // Visible in dev console to catch misconfig quickly (don’t throw in prod)
   console.warn('[supabase] Missing URL or key. Check your .env values.');
 }
 
-// Optional: tiny dev diagnostic (helps verify newline issues are gone)
-if (typeof window !== 'undefined' && (import.meta as any)?.env?.DEV) {
-  const hasNl = /\r|\n/.test(SUPABASE_KEY);
+// Tiny dev diagnostic (helps verify newline issues are gone)
+if (typeof window !== 'undefined' && VITE?.DEV) {
+  const hasNl = /\r|\n/.test(rawKey || '');
   // eslint-disable-next-line no-console
-  console.log(
-    `[supabase] url=${SUPABASE_URL} keyLen=${SUPABASE_KEY.length} hasNewline?`,
-    hasNl
-  );
+  console.log('[supabase] url:', SUPABASE_URL, 'keyLen:', SUPABASE_KEY.length, 'hasNewline?', hasNl);
 }
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
@@ -52,11 +49,11 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
     detectSessionInUrl: true,
   },
   realtime: {
-    // Optional, but keeps things tidy if you burst messages
+    // Smooths out bursts (optional)
     params: { eventsPerSecond: 10 },
   },
+  // Being explicit helps with some proxy/CDN setups
   global: {
-    // Be explicit; avoids rare proxy/header issues
     headers: {
       apikey: SUPABASE_KEY,
       Authorization: `Bearer ${SUPABASE_KEY}`,
@@ -64,5 +61,5 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
   },
 });
 
-// (Optional) named exports if you want to inspect in app code
+// Optional: easy visibility elsewhere without leaking the key
 export const SUPABASE_ENV = { url: SUPABASE_URL, keyLength: SUPABASE_KEY.length };
