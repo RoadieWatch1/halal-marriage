@@ -27,7 +27,8 @@ type ProfileBrief = {
 type MessageRow = {
   id: string;
   sender_id: string;
-  content: string | null;       // canonical text column
+  receiver_id: string;
+  content: string | null;
   created_at: string;
   connection_id: string;
 };
@@ -39,9 +40,9 @@ type ConversationItem = {
 };
 
 interface MessagesProps {
-  user: { id: string; firstName?: string } | null;
-  initialConnectionId?: string; // open a specific thread
-  onBack?: () => void;          // navigate back (e.g., to dashboard)
+  user: any;
+  initialConnectionId?: string;
+  onBack?: () => void;
 }
 
 const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }) => {
@@ -100,17 +101,14 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
         );
 
         const { data: profiles, error: pErr } = otherIds.length
-          ? await supabase
-              .from('profiles')
-              .select('id, first_name, age, location, photos')
-              .in('id', otherIds)
+          ? await supabase.from('profiles').select('id, first_name, age, location, photos').in('id', otherIds)
           : ({ data: [] } as any);
         if (pErr) throw pErr;
 
         const pMap = new Map<string, ProfileBrief>();
         (profiles ?? []).forEach((p: any) => pMap.set(p.id, p));
 
-        // Pull newest message per connection (by created_at DESC)
+        // Last messages — newest per connection
         const { data: lastMsgs, error: lErr } = list.length
           ? await supabase
               .from('messages')
@@ -123,7 +121,8 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
         const firstByConn = new Map<string, { text: string; created_at: string }>();
         (lastMsgs ?? []).forEach((m: any) => {
           if (!firstByConn.has(m.connection_id)) {
-            firstByConn.set(m.connection_id, { text: (m.content ?? '') as string, created_at: m.created_at as string });
+            const text = (m.content ?? '') as string;
+            firstByConn.set(m.connection_id, { text, created_at: m.created_at as string });
           }
         });
 
@@ -153,6 +152,17 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uid]);
 
+  // Find active conversation + other participant id
+  const activeConv = useMemo(
+    () => conversations.find((c) => c.conn.id === selectedConnId) ?? null,
+    [conversations, selectedConnId]
+  );
+  const otherUserId = useMemo(() => {
+    if (!activeConv || !uid) return null;
+    const { requester_id, receiver_id } = activeConv.conn;
+    return requester_id === uid ? receiver_id : requester_id;
+  }, [activeConv, uid]);
+
   // Load messages for selected conversation + realtime (with polling fallback)
   useEffect(() => {
     if (!selectedConnId) return;
@@ -164,7 +174,7 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
       try {
         const { data, error } = await supabase
           .from('messages')
-          .select('id, sender_id, content, created_at, connection_id')
+          .select('id, sender_id, receiver_id, content, created_at, connection_id')
           .eq('connection_id', selectedConnId)
           .order('created_at', { ascending: true });
 
@@ -187,12 +197,10 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
 
     load();
 
-    // realtime subscription
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
       channelRef.current = null;
     }
-    // Clear any old pollers
     if (pollRef.current) {
       clearInterval(pollRef.current);
       pollRef.current = null;
@@ -210,7 +218,8 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
             {
               id: m.id,
               sender_id: m.sender_id,
-              content: m.content,
+              receiver_id: m.receiver_id,
+              content: m.content ?? null,
               created_at: m.created_at,
               connection_id: m.connection_id,
             },
@@ -219,7 +228,6 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
       )
       .subscribe((status) => {
         console.log('[realtime] channel status:', status);
-        // Poll every 4s if not subscribed (network hiccup, key issues, etc.)
         if (status !== 'SUBSCRIBED' && !pollRef.current) {
           pollRef.current = setInterval(load, 4000);
         }
@@ -244,34 +252,55 @@ const Messages: React.FC<MessagesProps> = ({ user, initialConnectionId, onBack }
     };
   }, [selectedConnId]);
 
-  // scroll to bottom whenever messages change
+  // scroll to bottom on message changes
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loadingMsgs]);
 
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedConnId || !uid || sending) return;
-    const text = newMessage.trim();
-
-    setSending(true);
-    setNewMessage(''); // optimistic clear
-
-    const { data, error } = await supabase
-      .from('messages')
-      .insert({ connection_id: selectedConnId, sender_id: uid, content: text })
-      .select('id, sender_id, content, created_at, connection_id')
-      .single();
-
-    if (error) {
-      setNewMessage(text); // restore so they can retry
-      toast.error(error.message || 'Could not send message');
-      console.error('[messages.insert] error:', error);
-      setSending(false);
+    if (!otherUserId) {
+      toast.error('Could not determine recipient for this conversation.');
       return;
     }
 
-    if (data) {
-      setMessages((prev) => [...prev, data as MessageRow]);
+    const text = newMessage.trim();
+    setSending(true);
+    setNewMessage(''); // optimistic clear
+
+    const payload = {
+      connection_id: selectedConnId,
+      sender_id: uid,
+      receiver_id: otherUserId, // ✅ satisfies NOT NULL constraint on your schema
+      content: text,
+    };
+
+    let inserted: any = null;
+    let err: any = null;
+
+    const res = await supabase.from('messages').insert(payload).select().single();
+    if (res.error) {
+      err = res.error;
+    } else {
+      inserted = res.data;
+    }
+
+    if (inserted) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: inserted.id,
+          sender_id: inserted.sender_id,
+          receiver_id: inserted.receiver_id,
+          content: inserted.content,
+          created_at: inserted.created_at,
+          connection_id: inserted.connection_id,
+        },
+      ]);
+    } else {
+      setNewMessage(text); // restore so they can retry
+      toast.error(err?.message || 'Could not send message');
+      console.error('[messages.insert] error:', err);
     }
 
     setSending(false);
