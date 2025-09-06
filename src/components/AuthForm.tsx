@@ -1,22 +1,34 @@
-import React, { useState } from 'react';
+// C:\Users\vizir\halal-marriage\src\components\AuthForm.tsx
+import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Eye, EyeOff, Mail, Lock, User, Loader2, ArrowLeft } from 'lucide-react';
+import {
+  Eye,
+  EyeOff,
+  Mail,
+  Lock,
+  User,
+  Loader2,
+  ArrowLeft,
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 
 interface AuthFormProps {
-  onAuth: () => void; // called after successful sign-in or sign-up
+  onAuth: () => void; // called after a session exists
 }
 
-type Mode = 'signin' | 'signup' | 'forgot';
+type Mode = 'signin' | 'signup' | 'forgot' | 'verify';
 
 const AuthForm: React.FC<AuthFormProps> = ({ onAuth }) => {
   const [mode, setMode] = useState<Mode>('signin');
 
   const [email, setEmail] = useState('');
+  const [pendingEmail, setPendingEmail] = useState(''); // used on the verify screen
+  const [unconfirmedFlow, setUnconfirmedFlow] = useState(false); // sign-in tried before confirming
+
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [firstName, setFirstName] = useState('');
@@ -25,14 +37,42 @@ const AuthForm: React.FC<AuthFormProps> = ({ onAuth }) => {
   const [showConfirm, setShowConfirm] = useState(false);
 
   const [loading, setLoading] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+
+  const emailRedirectTo =
+    typeof window !== 'undefined' ? `${window.location.origin}/` : undefined;
+
+  // If the user arrives from the email link, Supabase creates a session.
+  // Detect that and advance the app.
+  useEffect(() => {
+    let unsub: { data: { subscription: { unsubscribe: () => void } } } | null = null;
+
+    (async () => {
+      const { data } = await supabase.auth.getSession();
+      if (data.session) {
+        onAuth();
+        return;
+      }
+      unsub = supabase.auth.onAuthStateChange((_event, session) => {
+        if (session) onAuth();
+      });
+    })();
+
+    return () => {
+      unsub?.data.subscription.unsubscribe();
+    };
+  }, [onAuth]);
 
   const switchMode = (next: Mode) => {
     setMode(next);
-    // keep email when switching modes; clear passwords for safety
+    // keep email when switching modes; clear sensitive fields for safety
     setPassword('');
     setConfirm('');
     setShowPwd(false);
     setShowConfirm(false);
+    if (next !== 'verify') {
+      setUnconfirmedFlow(false);
+    }
   };
 
   const doSignIn = async () => {
@@ -41,14 +81,30 @@ const AuthForm: React.FC<AuthFormProps> = ({ onAuth }) => {
       return;
     }
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
     setLoading(false);
+
     if (error) {
-      toast.error(error.message || 'Sign in failed');
+      // Common message: "Email not confirmed"
+      const msg = error.message || '';
+      if (/confirm|verified|not.*confirm/i.test(msg)) {
+        setPendingEmail(email);
+        setUnconfirmedFlow(true);
+        setMode('verify');
+        toast.message('Please confirm your email to continue.');
+        return;
+      }
+      toast.error(msg || 'Sign in failed');
       return;
     }
-    toast.success('Signed in successfully.');
-    onAuth();
+
+    if (data.session) {
+      toast.success('Welcome back!');
+      onAuth();
+    }
   };
 
   const doSignUp = async () => {
@@ -66,13 +122,12 @@ const AuthForm: React.FC<AuthFormProps> = ({ onAuth }) => {
     }
 
     setLoading(true);
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        data: { first_name: firstName.trim() }, // stored as user metadata; your profile table will be created later
-        emailRedirectTo:
-          typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : undefined,
+        data: { first_name: firstName.trim() }, // saved in auth.user.user_metadata
+        emailRedirectTo,
       },
     });
     setLoading(false);
@@ -82,8 +137,19 @@ const AuthForm: React.FC<AuthFormProps> = ({ onAuth }) => {
       return;
     }
 
-    toast.success('Account created. Please check your email to verify (if required).');
-    onAuth();
+    // If email confirmation is ON, there will be no session yet.
+    if (data.user && !data.session) {
+      setPendingEmail(email);
+      setMode('verify');
+      toast.success('Account created. Check your email to verify.');
+      return;
+    }
+
+    // If your project auto-confirms emails (dev), proceed immediately.
+    if (data.session) {
+      toast.success('Signed up successfully.');
+      onAuth();
+    }
   };
 
   const doReset = async () => {
@@ -93,7 +159,10 @@ const AuthForm: React.FC<AuthFormProps> = ({ onAuth }) => {
     }
     setLoading(true);
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/reset` : undefined,
+      redirectTo:
+        typeof window !== 'undefined'
+          ? `${window.location.origin}/reset`
+          : undefined,
     });
     setLoading(false);
     if (error) {
@@ -104,6 +173,95 @@ const AuthForm: React.FC<AuthFormProps> = ({ onAuth }) => {
     switchMode('signin');
   };
 
+  const doResend = async () => {
+    if (!pendingEmail || resendCooldown > 0) return;
+    setLoading(true);
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email: pendingEmail,
+      options: { emailRedirectTo },
+    });
+    setLoading(false);
+    if (error) {
+      toast.error(error.message || 'Could not resend verification email.');
+      return;
+    }
+    toast.success('Verification email sent again.');
+    setResendCooldown(30);
+    const t = setInterval(() => {
+      setResendCooldown((s) => {
+        if (s <= 1) {
+          clearInterval(t);
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
+  };
+
+  // --- VERIFY SCREEN ---
+  if (mode === 'verify') {
+    return (
+      <div className="min-h-[70vh] theme-bg p-4">
+        <Card className="w-full max-w-md mx-auto theme-card">
+          <CardHeader className="space-y-1">
+            <CardTitle className="text-2xl text-foreground">
+              {unconfirmedFlow ? 'Confirm your email to continue' : 'Check your email'}
+            </CardTitle>
+            <p className="text-sm theme-text-muted">
+              We sent a verification link to{' '}
+              <span className="text-foreground font-semibold">{pendingEmail}</span>.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <ol className="list-decimal list-inside text-sm theme-text-muted space-y-1">
+              <li>Open your inbox (and your spam folder just in case).</li>
+              <li>Find the email from <span className="text-foreground">Supabase Auth</span>.</li>
+              <li>Click <span className="text-foreground font-medium">“Confirm your email”</span>.</li>
+              <li>You’ll return here automatically and be signed in.</li>
+            </ol>
+
+            <div className="flex items-center gap-2 pt-2">
+              <Button
+                onClick={doResend}
+                className="btn-primary"
+                disabled={loading || resendCooldown > 0}
+              >
+                {resendCooldown > 0 ? `Resend (${resendCooldown})` : 'Resend email'}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setMode('signin');
+                  setEmail(pendingEmail);
+                }}
+              >
+                Use this email
+              </Button>
+            </div>
+
+            <div className="text-xs theme-text-muted pt-2">
+              Wrong email?{' '}
+              <button
+                type="button"
+                className="underline underline-offset-2"
+                onClick={() => {
+                  setMode('signup');
+                  setEmail('');
+                  setPendingEmail('');
+                  setUnconfirmedFlow(false);
+                }}
+              >
+                Start over
+              </button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // --- MAIN AUTH SCREENS ---
   return (
     <div className="min-h-[70vh] theme-bg p-4">
       <Card className="w-full max-w-md mx-auto theme-card">
@@ -158,7 +316,6 @@ const AuthForm: React.FC<AuthFormProps> = ({ onAuth }) => {
             </div>
           </div>
 
-          {/* Password (Sign in & Sign up) */}
           {(mode === 'signin' || mode === 'signup') && (
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
@@ -188,7 +345,6 @@ const AuthForm: React.FC<AuthFormProps> = ({ onAuth }) => {
             </div>
           )}
 
-          {/* Confirm password (Sign up only) */}
           {mode === 'signup' && (
             <div className="space-y-2">
               <Label htmlFor="confirm">Confirm Password</Label>
